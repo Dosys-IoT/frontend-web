@@ -33,6 +33,12 @@ export const devicesApi = {
     apiFetch<EnvironmentReadingResponse>(
       `/api/v1/medication/devices/${deviceId}/environment/latest`
     ),
+  environmentHistory: (deviceId: number, from: string, to: string) =>
+    apiFetch<EnvironmentReadingResponse[]>(
+      `/api/v1/medication/devices/${deviceId}/environment/history?from=${encodeURIComponent(
+        from
+      )}&to=${encodeURIComponent(to)}`
+    ),
   adherenceCalendar: (deviceId: number, month: string) =>
     apiFetch<AdherenceCalendarResponse>(
       `/api/v1/medication/devices/${deviceId}/adherence/calendar?month=${encodeURIComponent(month)}`

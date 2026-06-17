@@ -82,7 +82,7 @@ export default function ProfilePage() {
             <div className="mt-4 flex flex-col gap-5">
               <ToggleRow
                 title="Voice Assistance"
-                body="AI-guided medication descriptions"
+                body="Spoken medication reminders"
                 checked={prefs.voiceAssist}
                 onChange={(v) => setPrefs({ ...prefs, voiceAssist: v })}
               />

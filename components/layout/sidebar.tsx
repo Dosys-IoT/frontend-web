@@ -7,7 +7,6 @@ import {
   Pill,
   Cpu,
   Bell,
-  LineChart,
   User,
   Plus,
   LifeBuoy,
@@ -23,7 +22,6 @@ const NAV = [
   { href: "/medications", label: "Medications", icon: Pill },
   { href: "/device", label: "Device", icon: Cpu },
   { href: "/alerts", label: "Alerts", icon: Bell },
-  { href: "/insights", label: "Insights", icon: LineChart },
   { href: "/profile", label: "Profile", icon: User },
 ] as const;
 

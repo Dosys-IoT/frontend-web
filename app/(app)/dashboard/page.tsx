@@ -13,6 +13,8 @@ import { WeeklyScoreCard } from "@/components/dashboard/weekly-score-card";
 import { CompartmentsGrid } from "@/components/dashboard/compartments-grid";
 import { AlertsPanel } from "@/components/dashboard/alerts-panel";
 import { HistoryPanel } from "@/components/dashboard/history-panel";
+import { CreateDeviceCard } from "@/components/device/create-device-card";
+import { ErrorState } from "@/components/ui/error-state";
 
 function monthKey(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -134,6 +136,28 @@ export default function DashboardPage() {
       });
   }, [adherenceQ.data]);
 
+  const refetchAll = () => {
+    devicesQ.refetch();
+    if (deviceId) {
+      containersQ.refetch();
+      schedulesQ.refetch();
+      envQ.refetch();
+      adherenceQ.refetch();
+    }
+  };
+
+  const hasError =
+    devicesQ.isError ||
+    containersQ.isError ||
+    schedulesQ.isError ||
+    envQ.isError ||
+    adherenceQ.isError;
+
+  const contentLoading =
+    devicesQ.isLoading ||
+    (!!deviceId &&
+      (containersQ.isLoading || schedulesQ.isLoading || adherenceQ.isLoading));
+
   return (
     <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6">
       <DashboardHeader
@@ -141,27 +165,45 @@ export default function DashboardPage() {
         dosesRemaining={dosesRemainingToday}
         deviceLinked={!!deviceId}
         humidity={envQ.data?.humidity ?? null}
-        onSync={() => {
-          devicesQ.refetch();
-          if (deviceId) {
-            containersQ.refetch();
-            schedulesQ.refetch();
-            envQ.refetch();
-            adherenceQ.refetch();
-          }
-        }}
+        onSync={refetchAll}
       />
 
+      {hasError ? (
+        <ErrorState onRetry={refetchAll} />
+      ) : !devicesQ.isLoading && !deviceId ? (
+        <CreateDeviceCard />
+      ) : contentLoading ? (
+        <DashboardSkeleton />
+      ) : (
+        <>
+          <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+            <UpcomingDoseCard dose={upcoming} containers={containersQ.data ?? []} />
+            <WeeklyScoreCard score={weeklyScore} missedDoses={missedCount} />
+          </div>
+
+          <CompartmentsGrid containers={containersQ.data ?? []} />
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <AlertsPanel alerts={alerts} />
+            <HistoryPanel entries={history} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="flex flex-col gap-6">
       <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-        <UpcomingDoseCard dose={upcoming} containers={containersQ.data ?? []} />
-        <WeeklyScoreCard score={weeklyScore} missedDoses={missedCount} />
+        <div className="h-[180px] animate-pulse rounded-[28px] bg-white/60 shadow-[var(--shadow-card)] border border-[var(--color-ink-50)]/60" />
+        <div className="h-[180px] animate-pulse rounded-[28px] bg-white/60 shadow-[var(--shadow-card)] border border-[var(--color-ink-50)]/60" />
       </div>
-
-      <CompartmentsGrid containers={containersQ.data ?? []} />
-
+      <div className="h-[160px] animate-pulse rounded-[28px] bg-white/60 shadow-[var(--shadow-card)] border border-[var(--color-ink-50)]/60" />
       <div className="grid gap-6 lg:grid-cols-2">
-        <AlertsPanel alerts={alerts} />
-        <HistoryPanel entries={history} />
+        <div className="h-[220px] animate-pulse rounded-[28px] bg-white/60 shadow-[var(--shadow-card)] border border-[var(--color-ink-50)]/60" />
+        <div className="h-[220px] animate-pulse rounded-[28px] bg-white/60 shadow-[var(--shadow-card)] border border-[var(--color-ink-50)]/60" />
       </div>
     </div>
   );

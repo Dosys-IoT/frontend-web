@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Toggle } from "@/components/ui/toggle";
+import { useToast } from "@/components/ui/toast";
 import { devicesApi } from "@/lib/api/endpoints";
 import type { DayOfWeek, ScheduleResponse } from "@/lib/api/types";
 import { TimeSlotCard } from "@/components/medications/time-slot-card";
@@ -55,6 +56,7 @@ export default function EditMedicationPage({
   const extras = getMedicationExtras(containerNumber);
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const devicesQ = useQuery({ queryKey: ["devices"], queryFn: devicesApi.list });
   const deviceId = devicesQ.data?.[0]?.id;
@@ -139,7 +141,11 @@ export default function EditMedicationPage({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["containers", deviceId] });
       queryClient.invalidateQueries({ queryKey: ["schedules", deviceId] });
+      toast.success("Changes saved.");
       router.push(`/medications/${containerNumber}`);
+    },
+    onError: (err) => {
+      toast.error(err.message || "Could not save your changes.");
     },
   });
 

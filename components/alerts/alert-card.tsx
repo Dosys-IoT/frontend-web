@@ -1,32 +1,19 @@
 "use client";
 
-import {
-  AlertTriangle,
-  Bell,
-  Boxes,
-  Calendar,
-  Droplets,
-  MapPin,
-  MoreVertical,
-  Tag,
-} from "lucide-react";
-import type { Alert } from "@/lib/mocks";
-import { Button } from "@/components/ui/button";
+import { AlertTriangle, Bell, Boxes, Calendar, Droplets, WifiOff } from "lucide-react";
+import type { Alert } from "@/lib/domain/alerts";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 interface Props {
   alert: Alert;
-  onPrimary?: () => void;
-  onSnooze?: () => void;
 }
 
 const ICON_BY_TYPE = {
   environmental: Droplets,
   inventory: Boxes,
   missed_dose: Bell,
-  device: AlertTriangle,
-  calibration: AlertTriangle,
+  device: WifiOff,
 } as const;
 
 const SEVERITY_META = {
@@ -50,18 +37,17 @@ const SEVERITY_META = {
   },
 } as const;
 
-function relativeAgo(iso: string, anchor = "2026-05-11T20:30:00.000Z") {
-  const mins = Math.round(
-    (new Date(anchor).getTime() - new Date(iso).getTime()) / 60_000
-  );
-  if (mins < 60) return `${mins} mins ago`;
+function relativeAgo(iso: string, now = Date.now()) {
+  const mins = Math.round((now - new Date(iso).getTime()) / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min${mins === 1 ? "" : "s"} ago`;
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours} hours ago`;
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
   const days = Math.round(hours / 24);
   return `${days}d ago`;
 }
 
-export function AlertCard({ alert, onPrimary, onSnooze }: Props) {
+export function AlertCard({ alert }: Props) {
   const Icon = ICON_BY_TYPE[alert.type] ?? AlertTriangle;
   const meta = SEVERITY_META[alert.severity];
 
@@ -88,40 +74,7 @@ export function AlertCard({ alert, onPrimary, onSnooze }: Props) {
             <Calendar className="h-3 w-3" />
             {relativeAgo(alert.occurredAt)}
           </span>
-          {alert.location && (
-            <span className="inline-flex items-center gap-1">
-              <MapPin className="h-3 w-3" />
-              {alert.location}
-            </span>
-          )}
-          {alert.sku && (
-            <span className="inline-flex items-center gap-1">
-              <Tag className="h-3 w-3" />
-              SKU: {alert.sku}
-            </span>
-          )}
-          {alert.patient && (
-            <span className="inline-flex items-center gap-1">
-              <Bell className="h-3 w-3" />
-              {alert.patient} · {alert.ward}
-            </span>
-          )}
         </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <Button
-          variant={alert.severity === "critical" ? "dark" : "primary"}
-          size="sm"
-          onClick={onPrimary}
-        >
-          {alert.primaryAction}
-        </Button>
-        <Button variant="secondary" size="sm" onClick={onSnooze}>
-          Snooze
-        </Button>
-        <Button variant="ghost" size="icon" aria-label="More">
-          <MoreVertical className="h-4 w-4" />
-        </Button>
       </div>
     </article>
   );

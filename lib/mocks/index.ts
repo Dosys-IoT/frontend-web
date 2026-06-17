@@ -46,7 +46,4 @@
  */
 
 export * from "./medication-extras";
-export * from "./device-telemetry";
-export * from "./alerts";
-export * from "./insights";
 export * from "./preferences";

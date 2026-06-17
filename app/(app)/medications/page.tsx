@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Search, Sparkles, Boxes, ShieldCheck } from "lucide-react";
+import { Plus, Search, Bell, Boxes, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { devicesApi } from "@/lib/api/endpoints";
 import { selectNextDose } from "@/lib/domain/next-dose";
 import { getMedicationExtras } from "@/lib/mocks";
 import { MedicationRow } from "@/components/medications/medication-row";
+import { CreateDeviceCard } from "@/components/device/create-device-card";
+import { ErrorState } from "@/components/ui/error-state";
 
 function formatNextDose(at: Date | null, now: Date): string | null {
   if (!at) return null;
@@ -91,7 +93,21 @@ export default function MedicationsPage() {
       </header>
 
       <section className="flex flex-col gap-3">
-        {containersQ.isLoading || schedulesQ.isLoading ? (
+        {devicesQ.isLoading ? (
+          <SkeletonRows />
+        ) : devicesQ.isError || containersQ.isError || schedulesQ.isError ? (
+          <ErrorState
+            onRetry={() => {
+              devicesQ.refetch();
+              if (deviceId) {
+                containersQ.refetch();
+                schedulesQ.refetch();
+              }
+            }}
+          />
+        ) : !deviceId ? (
+          <CreateDeviceCard />
+        ) : containersQ.isLoading || schedulesQ.isLoading ? (
           <SkeletonRows />
         ) : rows.length === 0 ? (
           <EmptyState />
@@ -102,9 +118,9 @@ export default function MedicationsPage() {
 
       <section className="mt-2 grid gap-4 md:grid-cols-3">
         <FeatureCard
-          icon={<Sparkles className="h-4 w-4" />}
-          title="Smart Reminders"
-          body="AI analyzes your routine to suggest optimal pill timings based on meal cycles and biological markers."
+          icon={<Bell className="h-4 w-4" />}
+          title="Dose Reminders"
+          body="Each schedule triggers a reminder at the exact time you set, so no dose slips through."
         />
         <FeatureCard
           icon={<Boxes className="h-4 w-4" />}

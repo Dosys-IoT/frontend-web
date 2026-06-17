@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/toast";
 import { devicesApi } from "@/lib/api/endpoints";
 import type { DayOfWeek } from "@/lib/api/types";
 import { CompartmentPicker } from "@/components/medications/compartment-picker";
@@ -36,6 +37,7 @@ function addHours(time: { hour: number; minute: number }, hours: number) {
 export default function AddMedicationPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const devicesQ = useQuery({ queryKey: ["devices"], queryFn: devicesApi.list });
   const deviceId = devicesQ.data?.[0]?.id;
@@ -90,7 +92,11 @@ export default function AddMedicationPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["containers", deviceId] });
       queryClient.invalidateQueries({ queryKey: ["schedules", deviceId] });
+      toast.success(`${name || "Medication"} added.`);
       router.push("/medications");
+    },
+    onError: (err) => {
+      toast.error(err.message || "Could not save the medication.");
     },
   });
 
