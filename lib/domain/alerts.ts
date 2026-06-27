@@ -96,7 +96,7 @@ export function deriveAlerts({
   }
 
   // --- Environment: storage risk ---
-  if (environment && environment.riskStatus === "RISK") {
+  if (environment && environment.riskStatus !== "NORMAL") {
     alerts.push({
       id: "env-risk",
       severity: "critical",

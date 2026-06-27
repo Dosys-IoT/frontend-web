@@ -4,7 +4,7 @@ export type DayOfWeek =
   | "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY"
   | "FRIDAY" | "SATURDAY" | "SUNDAY";
 
-export type RiskStatus = "NORMAL" | "RISK";
+export type RiskStatus = "NORMAL" | "RISK" | "WARNING" | "CRITICAL";
 export type IntakeStatus = "TAKEN" | "MISSED";
 
 export interface UserResponse {
@@ -92,6 +92,99 @@ export interface EnvironmentReadingResponse {
   humidity: number;
   recordedAt: string;
   riskStatus: RiskStatus;
+  deviceId?: number | string;
+  firmwareVersion?: string;
+}
+
+export interface DeviceHardwareStatusResponse {
+  deviceId: string | number;
+  status: string;
+  lastSeenAt?: string | null;
+  rtcOk?: boolean | null;
+  sht3xOk?: boolean | null;
+  dfPlayerOk?: boolean | null;
+  sdCardOk?: boolean | null;
+  switchOk?: boolean | null;
+  buttonPin?: number | null;
+  rssi?: number | null;
+  firmwareVersion?: string | null;
+  wifiConnected?: boolean | null;
+  mqttConnected?: boolean | null;
+}
+
+export interface EdgeHealthResponse {
+  status?: string;
+  message?: string;
+  timestamp?: string;
+  uptimeSeconds?: number;
+}
+
+export interface EdgeMqttStatusResponse {
+  connected?: boolean;
+  status?: string;
+  message?: string;
+  broker?: string;
+  lastError?: string | null;
+  lastConnectedAt?: string | null;
+}
+
+export interface EdgeThresholds {
+  temperatureWarning?: number;
+  temperatureCritical?: number;
+  humidityWarning?: number;
+  humidityCritical?: number;
+}
+
+export interface EdgeRuntimeContainer {
+  containerNumber?: number;
+  medicationName?: string | null;
+  dosageLabel?: string | null;
+  remainingPills?: number;
+  enabled?: boolean;
+}
+
+export interface EdgeRuntimeSchedule {
+  scheduleId?: string;
+  containerNumber?: number;
+  time?: string;
+  daysOfWeek?: string[];
+  audioTrack?: number;
+  confirmationWindowSeconds?: number;
+}
+
+export interface EdgeCachedConfigResponse {
+  requestId?: string;
+  deviceId?: string | number;
+  configVersion?: number;
+  serverTime?: string;
+  timezone?: string;
+  containers?: EdgeRuntimeContainer[];
+  schedules?: EdgeRuntimeSchedule[];
+  environmentThresholds?: EdgeThresholds;
+}
+
+export interface EdgeRecentEventResponse {
+  id?: string | number;
+  deviceId?: string | number;
+  eventType?: string;
+  topic?: string;
+  summary?: string;
+  status?: string;
+  createdAt?: string;
+  payload?: unknown;
+}
+
+export interface EdgeRecentEventsResponse {
+  items?: EdgeRecentEventResponse[];
+  events?: EdgeRecentEventResponse[];
+  data?: EdgeRecentEventResponse[];
+}
+
+export interface EdgeCommandResponse {
+  commandId?: string;
+  accepted?: boolean;
+  queued?: boolean;
+  message?: string;
 }
 
 export interface AdherenceItem {

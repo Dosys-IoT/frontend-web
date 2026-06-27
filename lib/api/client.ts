@@ -1,18 +1,32 @@
 import { clearSession, getToken } from "@/lib/auth/session";
 import type { ApiError } from "./types";
 
-const BASE_URL =
+export const REST_API_BASE_URL =
+  process.env.NEXT_PUBLIC_REST_API_BASE_URL ??
   process.env.NEXT_PUBLIC_API_BASE_URL ??
   "https://dosys-backend-149855215912.us-central1.run.app";
+
+export const EDGE_API_BASE_URL =
+  process.env.NEXT_PUBLIC_EDGE_API_BASE_URL ??
+  "https://dosys-edge-149855215912.us-central1.run.app";
 
 interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
   auth?: boolean;
+  baseUrl?: string;
+  timeoutMs?: number;
 }
 
 export async function apiFetch<T>(
   path: string,
-  { body, auth = true, headers, ...rest }: RequestOptions = {}
+  {
+    body,
+    auth = true,
+    headers,
+    baseUrl = REST_API_BASE_URL,
+    timeoutMs = 12_000,
+    ...rest
+  }: RequestOptions = {}
 ): Promise<T> {
   const h = new Headers(headers);
   h.set("Accept", "application/json");
@@ -22,13 +36,32 @@ export async function apiFetch<T>(
     if (token) h.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...rest,
-    headers: h,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (res.status === 401) {
+  let res: Response;
+  try {
+    res = await fetch(new URL(path, baseUrl), {
+      ...rest,
+      headers: h,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const err: ApiError = {
+      status: 0,
+      message:
+        error instanceof DOMException && error.name === "AbortError"
+          ? `Request timed out after ${Math.round(timeoutMs / 1000)}s`
+          : "Network request failed",
+      body: error,
+    };
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (auth && res.status === 401) {
     clearSession();
   }
 

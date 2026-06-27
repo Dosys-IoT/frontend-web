@@ -90,7 +90,7 @@ export default function DashboardPage() {
           body: `Only ${c.remainingPills} doses remaining in Compartment ${c.containerNumber}. Refill soon.`,
         });
       });
-    if (envQ.data?.riskStatus === "RISK") {
+    if (envQ.data && envQ.data.riskStatus !== "NORMAL") {
       list.push({
         id: "env-risk",
         type: "environment",
