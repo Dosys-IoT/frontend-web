@@ -31,7 +31,7 @@ export function CreateDeviceCard() {
     onSuccess: (device) => {
       queryClient.invalidateQueries({ queryKey: ["devices"] });
       toast.success(`Device "${device.name}" created.`);
-      router.push("/device-diagnostics");
+      router.push("/device");
     },
     onError: (err) => {
       toast.error(err.message || "Could not create the device.");
@@ -48,7 +48,7 @@ export function CreateDeviceCard() {
     onSuccess: (device) => {
       queryClient.invalidateQueries({ queryKey: ["devices"] });
       toast.success(`Physical device ${device.deviceId} linked.`);
-      router.push("/device-diagnostics");
+      router.push("/device");
     },
     onError: (err) => {
       toast.error(err.message || "Could not link the physical device.");

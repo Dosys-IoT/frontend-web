@@ -229,22 +229,6 @@ export default function AddMedicationPage() {
             </div>
           </section>
 
-          <section className="rounded-3xl bg-[var(--color-ink-900)] p-6 text-white shadow-[var(--shadow-card)]">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-white/60">
-              Real schedule flow
-            </p>
-            <p className="mt-4 text-[14px] leading-6 text-white/80">
-              The container is saved first. Then one schedule is created for each selected time
-              using the same selected days. After that, the Edge config sync is triggered.
-            </p>
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-[13px] text-white/80">
-              <p className="font-medium text-white">Pills per dose</p>
-              <p className="mt-1">
-                Selected: {pillsPerDose} pill{pillsPerDose > 1 ? "s" : ""}. This remains a UI
-                control for operator clarity.
-              </p>
-            </div>
-          </section>
         </div>
       </div>
 
