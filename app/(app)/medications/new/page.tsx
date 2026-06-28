@@ -1,39 +1,29 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ShieldCheck, Sparkles } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
-import { devicesApi } from "@/lib/api/endpoints";
-import { selectPrimaryDevice } from "@/lib/domain/device-selection";
-import type { DayOfWeek } from "@/lib/api/types";
 import { CompartmentPicker } from "@/components/medications/compartment-picker";
+import { FrequencyPicker, type DoseFrequency } from "@/components/medications/frequency-picker";
+import { devicesApi, edgeApi } from "@/lib/api/endpoints";
+import type { UpsertContainerRequest } from "@/lib/api/types";
+import { selectPrimaryDevice } from "@/lib/domain/device-selection";
 import {
-  FrequencyPicker,
-  type DoseFrequency,
-} from "@/components/medications/frequency-picker";
+  ALL_DAYS,
+  addHours,
+  buildScheduleRequest,
+  formatTimeInput,
+  parseTimeInput,
+} from "@/lib/domain/medication-form";
 
-const ALL_DAYS: DayOfWeek[] = [
-  "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY",
-  "FRIDAY", "SATURDAY", "SUNDAY",
-];
-
-function parseTime(value: string): { hour: number; minute: number } {
-  const [h, m] = value.split(":").map(Number);
-  return { hour: h ?? 8, minute: m ?? 0 };
-}
-
-function addHours(time: { hour: number; minute: number }, hours: number) {
-  const total = time.hour * 60 + time.minute + hours * 60;
-  return { hour: Math.floor((total / 60) % 24), minute: total % 60 };
-}
+const PILL_OPTIONS = [1, 2, 3];
 
 export default function AddMedicationPage() {
   const router = useRouter();
@@ -50,62 +40,94 @@ export default function AddMedicationPage() {
   });
 
   const usedSlots = (containersQ.data ?? [])
-    .filter((c) => !!c.medicationName)
-    .map((c) => c.containerNumber);
+    .filter((container) => !!container.medicationName)
+    .map((container) => container.containerNumber);
 
-  const [compartment, setCompartment] = useState(1);
+  const [containerNumber, setContainerNumber] = useState(1);
   const [name, setName] = useState("");
-  const [dosage, setDosage] = useState("");
-  const [loadedQty, setLoadedQty] = useState("30");
-  const [refillThreshold, setRefillThreshold] = useState("5"); // TODO(backend)
-  const [pillWeightMg, setPillWeightMg] = useState("0.00"); // TODO(backend)
+  const [dosageLabel, setDosageLabel] = useState("");
+  const [remainingPills, setRemainingPills] = useState("30");
+  const [pillsPerDose, setPillsPerDose] = useState(1);
   const [frequency, setFrequency] = useState<DoseFrequency>("ONCE");
   const [primaryTime, setPrimaryTime] = useState("08:00");
+
+  const secondaryTime = useMemo(() => {
+    const parsed = parseTimeInput(primaryTime);
+    return formatTimeInput(addHours(parsed, 12));
+  }, [primaryTime]);
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (!deviceId) throw new Error("No device available");
-      await devicesApi.upsertContainer(deviceId, compartment, {
-        medicationName: name,
-        dosageLabel: dosage || undefined,
-        remainingPills: Number(loadedQty) || 0,
+
+      const containerPayload: UpsertContainerRequest = {
+        medicationName: name.trim(),
+        dosageLabel: dosageLabel.trim() || undefined,
+        remainingPills: Number(remainingPills) || 0,
         isEnabled: true,
-      });
-      if (frequency !== "AS_NEEDED") {
-        const t = parseTime(primaryTime);
-        await devicesApi.createSchedule(deviceId, {
-          containerNumber: compartment,
-          time: { hour: t.hour, minute: t.minute },
-          daysOfWeek: ALL_DAYS,
-          isActive: true,
-        });
-        if (frequency === "TWICE") {
-          const t2 = addHours(t, 12);
-          await devicesApi.createSchedule(deviceId, {
-            containerNumber: compartment,
-            time: { hour: t2.hour, minute: t2.minute },
-            daysOfWeek: ALL_DAYS,
-            isActive: true,
-          });
-        }
+      };
+
+      await devicesApi.upsertContainer(deviceId, containerNumber, containerPayload);
+
+      for (const schedule of buildSchedules()) {
+        await devicesApi.createSchedule(deviceId, schedule);
+      }
+
+      try {
+        await edgeApi.configSync(String(deviceId));
+      } catch (error) {
+        toast.info(`Medication saved, but config sync failed: ${getErrorMessage(error)}`);
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["containers", deviceId] });
       queryClient.invalidateQueries({ queryKey: ["schedules", deviceId] });
-      toast.success(`${name || "Medication"} added.`);
+      queryClient.invalidateQueries({ queryKey: ["devices"] });
+      toast.success(`${name || "Medication"} saved.`);
       router.push("/medications");
     },
-    onError: (err) => {
-      toast.error(err.message || "Could not save the medication.");
+    onError: (error) => {
+      console.error("Medication save failed", {
+        deviceId,
+        containerNumber,
+        payload: {
+          medicationName: name.trim(),
+          dosageLabel: dosageLabel.trim() || undefined,
+          remainingPills: Number(remainingPills) || 0,
+          isEnabled: true,
+          schedules: buildSchedules(),
+        },
+        error,
+      });
+      toast.error(`Could not save the medication: ${getErrorMessage(error)}`);
     },
   });
 
   const canSubmit =
     !!deviceId &&
-    !usedSlots.includes(compartment) &&
+    !usedSlots.includes(containerNumber) &&
     name.trim().length > 1 &&
     !mutation.isPending;
+
+  function buildSchedules() {
+    if (frequency === "AS_NEEDED") return [];
+    const first = buildScheduleRequest(
+      containerNumber,
+      parseTimeInput(primaryTime),
+      ALL_DAYS,
+      true
+    );
+    if (frequency === "TWICE") {
+      const second = buildScheduleRequest(
+        containerNumber,
+        parseTimeInput(secondaryTime),
+        ALL_DAYS,
+        true
+      );
+      return [first, second];
+    }
+    return [first];
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-7">
@@ -115,153 +137,103 @@ export default function AddMedicationPage() {
             <Link href="/medications" className="hover:text-[var(--color-ink-700)]">
               Medications
             </Link>{" "}
-            ›{" "}
+            &gt;{" "}
             <span className="font-medium text-[var(--color-ink-700)]">New Entry</span>
           </p>
           <h1 className="mt-2 font-display text-[44px] leading-none text-[var(--color-ink-900)]">
             Add Medication
           </h1>
-          <p className="mt-3 max-w-[560px] text-[14px] text-[var(--color-ink-500)]">
-            Configure your clinical regimen. Ensure high precision for device calibration
-            by entering exact pill weights.
+          <p className="mt-3 max-w-[620px] text-[14px] text-[var(--color-ink-500)]">
+            Create the container and real schedules used by the ESP32. No calibration or weight
+            workflow is involved here.
           </p>
         </div>
         <DeviceStatusPill connected={!!deviceId} />
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        {/* LEFT COLUMN */}
         <div className="flex flex-col gap-5">
-          <section className="rounded-3xl bg-white p-6 shadow-[var(--shadow-card)] border border-[var(--color-ink-50)]/60">
-            <SectionTitle icon="🔗" label="Medication Details" />
-            <div className="mt-4 grid gap-4">
-              <div>
+          <section className="rounded-3xl border border-[var(--color-ink-50)]/60 bg-white p-6 shadow-[var(--shadow-card)]">
+            <SectionTitle label="Medication Details" />
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
                 <Label htmlFor="med-name">Medication Name</Label>
                 <Input
                   id="med-name"
                   className="mt-1.5"
-                  placeholder="e.g. Lisinopril 10mg"
+                  placeholder="e.g. Lisinopril"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="dosage">Dosage Label</Label>
-                  <Input
-                    id="dosage"
-                    className="mt-1.5"
-                    placeholder="e.g. 10mg Tablet"
-                    value={dosage}
-                    onChange={(e) => setDosage(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="loaded">Loaded Quantity</Label>
-                  <div className="mt-1.5 relative">
-                    <Input
-                      id="loaded"
-                      type="number"
-                      min={0}
-                      value={loadedQty}
-                      onChange={(e) => setLoadedQty(e.target.value)}
-                    />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] text-[var(--color-ink-400)]">
-                      Pills
-                    </span>
-                  </div>
-                </div>
+              <div className="sm:col-span-2">
+                <Label htmlFor="dosage">Dosage Label</Label>
+                <Input
+                  id="dosage"
+                  className="mt-1.5"
+                  placeholder="e.g. 10mg"
+                  value={dosageLabel}
+                  onChange={(e) => setDosageLabel(e.target.value)}
+                />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="refill">
-                    Refill Threshold{" "}
-                    <span className="text-[11px] font-normal text-[var(--color-ink-400)]">
-                      (mock)
-                    </span>
-                  </Label>
-                  <div className="mt-1.5 relative">
-                    <Input
-                      id="refill"
-                      type="number"
-                      min={0}
-                      value={refillThreshold}
-                      onChange={(e) => setRefillThreshold(e.target.value)}
-                    />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] text-[var(--color-ink-400)]">
-                      Pills
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-3xl bg-white p-6 shadow-[var(--shadow-card)] border border-[var(--color-ink-50)]/60">
-            <div className="flex items-center justify-between">
-              <SectionTitle icon="⚖" label="Precision Calibration" />
-              <Button variant="secondary" size="sm" type="button" disabled>
-                Calibrate Now
-              </Button>
-            </div>
-            <p className="mt-2 text-[12px] text-[var(--color-ink-500)]">
-              Required for accurate dispensing weight checks.{" "}
-              <span className="text-[var(--color-amber-500)]">(mock — backend pending)</span>
-            </p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_1.2fr]">
               <div>
-                <Label htmlFor="pill-weight">Individual Pill Weight</Label>
-                <div className="mt-1.5 relative">
-                  <Input
-                    id="pill-weight"
-                    type="number"
-                    step="0.01"
-                    value={pillWeightMg}
-                    onChange={(e) => setPillWeightMg(e.target.value)}
-                  />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] text-[var(--color-ink-400)]">
-                    mg
-                  </span>
+                <Label htmlFor="loaded">Loaded Quantity</Label>
+                <Input
+                  id="loaded"
+                  type="number"
+                  min={0}
+                  className="mt-1.5"
+                  value={remainingPills}
+                  onChange={(e) => setRemainingPills(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Pills per Dose</Label>
+                <div className="mt-1.5 flex gap-2">
+                  {PILL_OPTIONS.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setPillsPerDose(option)}
+                      className={
+                        "rounded-full px-4 py-2 text-[13px] font-medium transition-colors " +
+                        (pillsPerDose === option
+                          ? "bg-[var(--color-sanctuary-100)] text-[var(--color-sanctuary-700)]"
+                          : "bg-[var(--color-cream-100)] text-[var(--color-ink-500)] hover:bg-[var(--color-sanctuary-50)]")
+                      }
+                    >
+                      {option} pill{option > 1 ? "s" : ""}
+                    </button>
+                  ))}
                 </div>
               </div>
-              <p className="rounded-2xl bg-[var(--color-cream-100)] p-4 text-[12px] leading-relaxed text-[var(--color-ink-500)]">
-                Place 5 pills on the device calibration tray to automatically calculate
-                the mean weight for higher accuracy.
-              </p>
             </div>
           </section>
-        </div>
 
-        {/* RIGHT COLUMN */}
-        <div className="flex flex-col gap-5">
-          <section className="rounded-3xl bg-white p-6 shadow-[var(--shadow-card)] border border-[var(--color-ink-50)]/60">
-            <SectionTitle icon="" label="Device Mapping" />
+          <section className="rounded-3xl border border-[var(--color-ink-50)]/60 bg-white p-6 shadow-[var(--shadow-card)]">
+            <SectionTitle label="Assigned Compartment" />
             <p className="mt-1 text-[12px] uppercase tracking-wide text-[var(--color-ink-400)]">
-              Assigned Compartment
+              Container number
             </p>
             <div className="mt-3">
               <CompartmentPicker
-                value={compartment}
-                onChange={setCompartment}
+                value={containerNumber}
+                onChange={setContainerNumber}
                 disabledNumbers={usedSlots}
               />
             </div>
-            {usedSlots.includes(compartment) && (
+            {usedSlots.includes(containerNumber) && (
               <p className="mt-2 text-[12px] text-[var(--color-danger-600)]">
-                Compartment {compartment} is already in use.
+                Compartment {containerNumber} is already in use.
               </p>
             )}
           </section>
+        </div>
 
-          <section className="rounded-3xl bg-white p-6 shadow-[var(--shadow-card)] border border-[var(--color-ink-50)]/60">
-            <SectionTitle icon="" label="Schedule Configuration" />
+        <div className="flex flex-col gap-5">
+          <section className="rounded-3xl border border-[var(--color-ink-50)]/60 bg-white p-6 shadow-[var(--shadow-card)]">
+            <SectionTitle label="Schedule Configuration" />
             <div className="mt-4 grid gap-4">
-              <div>
-                <Label>Pills per Dose</Label>
-                <div className="mt-1.5 flex h-12 items-center rounded-xl border border-[var(--color-ink-100)] bg-[var(--color-cream-50)] px-4 text-[14px] text-[var(--color-ink-500)]">
-                  1 Pill <span className="ml-auto text-[var(--color-ink-400)]">▾</span>
-                </div>
-              </div>
               <div>
                 <Label>Daily Frequency</Label>
                 <div className="mt-1.5">
@@ -276,18 +248,33 @@ export default function AddMedicationPage() {
                   className="mt-1.5"
                   value={primaryTime}
                   onChange={(e) => setPrimaryTime(e.target.value)}
-                  disabled={frequency === "AS_NEEDED"}
                 />
+              </div>
+              <div>
+                <Label>Secondary Dose Time</Label>
+                <div className="mt-1.5 rounded-xl border border-[var(--color-ink-100)] bg-[var(--color-cream-50)] px-4 py-3 text-[14px] text-[var(--color-ink-500)]">
+                  {frequency === "TWICE" ? secondaryTime : "Not used"}
+                </div>
               </div>
             </div>
           </section>
 
-          <section className="relative overflow-hidden rounded-3xl bg-[var(--color-ink-900)] p-6 text-white">
-            <div className="absolute inset-0 grain pointer-events-none" />
-            <Sparkles className="h-5 w-5 text-[var(--color-sanctuary-300)]" />
-            <p className="mt-12 text-[11px] uppercase tracking-[0.18em] text-white/60">
-              Medical Grade Accuracy
+          <section className="rounded-3xl bg-[var(--color-ink-900)] p-6 text-white shadow-[var(--shadow-card)]">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-white/60">
+              Real schedule flow
             </p>
+            <p className="mt-4 text-[14px] leading-6 text-white/80">
+              Container data is saved first. Then one or two schedules are created depending on the
+              selected frequency. As Needed skips schedule creation.
+            </p>
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-[13px] text-white/80">
+              <p className="font-medium text-white">Pills per dose</p>
+              <p className="mt-1">
+                Selected: {pillsPerDose} pill{pillsPerDose > 1 ? "s" : ""}. This value is kept in
+                the UI for operator clarity and is not sent to the backend because the API does not
+                persist it yet.
+              </p>
+            </div>
           </section>
         </div>
       </div>
@@ -299,32 +286,17 @@ export default function AddMedicationPage() {
         >
           Discard Draft
         </Link>
-        <Button
-          onClick={() => mutation.mutate()}
-          disabled={!canSubmit}
-          size="lg"
-        >
+        <Button onClick={() => mutation.mutate()} disabled={!canSubmit} size="lg">
           <ShieldCheck className="h-4 w-4" />
-          {mutation.isPending ? "Saving…" : "Save Medication"}
+          {mutation.isPending ? "Saving..." : "Save Medication"}
         </Button>
       </footer>
-
-      {mutation.error && (
-        <p className="text-right text-[13px] text-[var(--color-danger-600)]">
-          Could not save: {(mutation.error as Error).message}
-        </p>
-      )}
     </div>
   );
 }
 
-function SectionTitle({ icon, label }: { icon: string; label: string }) {
-  return (
-    <h2 className="text-[15px] font-semibold text-[var(--color-ink-900)]">
-      <span className="mr-2 text-[var(--color-sanctuary-600)]">{icon}</span>
-      {label}
-    </h2>
-  );
+function SectionTitle({ label }: { label: string }) {
+  return <h2 className="text-[15px] font-semibold text-[var(--color-ink-900)]">{label}</h2>;
 }
 
 function DeviceStatusPill({ connected }: { connected: boolean }) {
@@ -339,4 +311,19 @@ function DeviceStatusPill({ connected }: { connected: boolean }) {
       </p>
     </div>
   );
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error && typeof error === "object") {
+    const body = "body" in error ? (error as { body?: unknown }).body : undefined;
+    if (body && typeof body === "object" && "message" in body) {
+      const message = (body as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) return message;
+    }
+    if ("message" in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) return message;
+    }
+  }
+  return "Request failed.";
 }

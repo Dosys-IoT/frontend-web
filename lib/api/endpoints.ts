@@ -95,7 +95,7 @@ export const devicesApi = {
   createSchedule: (deviceId: number, body: UpsertScheduleRequest) =>
     apiFetch<ScheduleResponse>(
       `/api/v1/medication/devices/${deviceId}/schedules`,
-      { method: "POST", body }
+      { method: "POST", body: normalizeScheduleRequest(body) }
     ),
   updateSchedule: (
     deviceId: number,
@@ -104,7 +104,7 @@ export const devicesApi = {
   ) =>
     apiFetch<ScheduleResponse>(
       `/api/v1/medication/devices/${deviceId}/schedules/${scheduleId}`,
-      { method: "PUT", body }
+      { method: "PUT", body: normalizeScheduleRequest(body) }
     ),
   deleteSchedule: (deviceId: number, scheduleId: number) =>
     apiFetch<void>(
@@ -112,6 +112,20 @@ export const devicesApi = {
       { method: "DELETE" }
     ),
 };
+
+function normalizeScheduleRequest(body: UpsertScheduleRequest) {
+  return {
+    ...body,
+    time: typeof body.time === "string" ? body.time : formatScheduleTime(body.time),
+  };
+}
+
+function formatScheduleTime(time: { hour: number; minute: number; second?: number | null }) {
+  const hour = String(time.hour).padStart(2, "0");
+  const minute = String(time.minute).padStart(2, "0");
+  const second = String(time.second ?? 0).padStart(2, "0");
+  return `${hour}:${minute}:${second}`;
+}
 
 export const edgeApi = {
   health: () =>

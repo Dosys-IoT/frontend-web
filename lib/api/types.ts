@@ -80,7 +80,7 @@ export interface ScheduleResponse {
 
 export interface UpsertScheduleRequest {
   containerNumber: number;
-  time: LocalTimeDTO;
+  time: LocalTimeDTO | string;
   daysOfWeek: DayOfWeek[];
   isActive: boolean;
 }
