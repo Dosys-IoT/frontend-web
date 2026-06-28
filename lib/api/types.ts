@@ -22,6 +22,11 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface UpdateProfileRequest {
+  firstName: string;
+  lastName: string;
+}
+
 export interface RegisterRequest {
   firstName: string;
   lastName: string;
@@ -66,6 +71,8 @@ export interface AlarmSettingsResponse extends AlarmSettingsRequest {
   deviceId: string;
 }
 
+export interface ProfileResponse extends UserResponse {}
+
 export interface LinkPhysicalDeviceRequest {
   deviceId: string;
   deviceName?: string;
@@ -73,6 +80,14 @@ export interface LinkPhysicalDeviceRequest {
 }
 
 export interface LinkPhysicalDeviceResponse {
+  deviceId: string;
+  name: string;
+  linked: boolean;
+  status: string;
+  hardwareDeviceId?: number | null;
+}
+
+export interface UnlinkDeviceResponse {
   deviceId: string;
   name: string;
   linked: boolean;

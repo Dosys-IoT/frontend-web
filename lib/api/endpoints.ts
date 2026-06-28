@@ -18,10 +18,12 @@ import type {
   LoginRequest,
   LoginResponse,
   RegisterRequest,
+  UpdateProfileRequest,
   ScheduleResponse,
   UpsertContainerRequest,
   UpsertScheduleRequest,
   UserResponse,
+  UnlinkDeviceResponse,
 } from "./types";
 
 function isApiErrorLike(error: unknown): error is { status?: number } {
@@ -38,6 +40,8 @@ export const accessApi = {
   register: (body: RegisterRequest) =>
     apiFetch<UserResponse>("/api/v1/access/register", { method: "POST", body, auth: false }),
   me: () => apiFetch<UserResponse>("/api/v1/access/me"),
+  updateMe: (body: UpdateProfileRequest) =>
+    apiFetch<UserResponse>("/api/v1/access/me", { method: "PUT", body }),
 };
 
 export const devicesApi = {
@@ -48,6 +52,10 @@ export const devicesApi = {
     apiFetch<LinkPhysicalDeviceResponse>("/api/v1/medication/devices/link", {
       method: "POST",
       body,
+    }),
+  unlinkDevice: (deviceId: number) =>
+    apiFetch<UnlinkDeviceResponse>(`/api/v1/medication/devices/${deviceId}/unlink`, {
+      method: "POST",
     }),
   status: (deviceId: number) =>
     apiFetch<DeviceHardwareStatusResponse>(`/api/v1/medication/devices/${deviceId}/status`),
