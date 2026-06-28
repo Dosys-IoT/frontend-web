@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { devicesApi } from "@/lib/api/endpoints";
 import { deriveAlerts } from "@/lib/domain/alerts";
+import { selectPrimaryDevice } from "@/lib/domain/device-selection";
 import { AlertCard } from "@/components/alerts/alert-card";
 import { CreateDeviceCard } from "@/components/device/create-device-card";
 import { ErrorState } from "@/components/ui/error-state";
@@ -15,8 +16,9 @@ function monthKey(d: Date) {
 
 export default function AlertsPage() {
   const devicesQ = useQuery({ queryKey: ["devices"], queryFn: devicesApi.list });
-  const device = devicesQ.data?.[0];
-  const deviceId = device?.id;
+  const selectedDevice = selectPrimaryDevice(devicesQ.data);
+  const device = selectedDevice.device;
+  const deviceId = selectedDevice.apiDeviceId;
 
   const containersQ = useQuery({
     queryKey: ["containers", deviceId],

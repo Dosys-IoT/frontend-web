@@ -8,6 +8,7 @@ import { Plus, Search, Bell, Boxes, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { devicesApi } from "@/lib/api/endpoints";
 import { selectNextDose } from "@/lib/domain/next-dose";
+import { selectPrimaryDevice } from "@/lib/domain/device-selection";
 import { getMedicationExtras } from "@/lib/mocks";
 import { MedicationRow } from "@/components/medications/medication-row";
 import { CreateDeviceCard } from "@/components/device/create-device-card";
@@ -31,7 +32,7 @@ function formatNextDose(at: Date | null, now: Date): string | null {
 
 export default function MedicationsPage() {
   const devicesQ = useQuery({ queryKey: ["devices"], queryFn: devicesApi.list });
-  const deviceId = devicesQ.data?.[0]?.id;
+  const deviceId = selectPrimaryDevice(devicesQ.data).apiDeviceId;
 
   const containersQ = useQuery({
     queryKey: ["containers", deviceId],

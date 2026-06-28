@@ -20,6 +20,7 @@ import { devicesApi } from "@/lib/api/endpoints";
 import type { DayOfWeek, ScheduleResponse } from "@/lib/api/types";
 import { TimeSlotCard } from "@/components/medications/time-slot-card";
 import { getMedicationExtras } from "@/lib/mocks";
+import { selectPrimaryDevice } from "@/lib/domain/device-selection";
 
 const ALL_DAYS: DayOfWeek[] = [
   "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY",
@@ -59,7 +60,7 @@ export default function EditMedicationPage({
   const toast = useToast();
 
   const devicesQ = useQuery({ queryKey: ["devices"], queryFn: devicesApi.list });
-  const deviceId = devicesQ.data?.[0]?.id;
+  const deviceId = selectPrimaryDevice(devicesQ.data).apiDeviceId;
 
   const containersQ = useQuery({
     queryKey: ["containers", deviceId],

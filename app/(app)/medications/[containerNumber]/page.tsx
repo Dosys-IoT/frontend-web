@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { devicesApi } from "@/lib/api/endpoints";
 import type { AdherenceItem } from "@/lib/api/types";
 import { getMedicationExtras } from "@/lib/mocks";
+import { selectPrimaryDevice } from "@/lib/domain/device-selection";
 import {
   ComplianceBars,
   type ComplianceDay,
@@ -43,7 +44,7 @@ export default function MedicationDetailPage({
   const extras = getMedicationExtras(containerNumber);
 
   const devicesQ = useQuery({ queryKey: ["devices"], queryFn: devicesApi.list });
-  const deviceId = devicesQ.data?.[0]?.id;
+  const deviceId = selectPrimaryDevice(devicesQ.data).apiDeviceId;
 
   const containersQ = useQuery({
     queryKey: ["containers", deviceId],

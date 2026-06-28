@@ -11,6 +11,8 @@ import type {
   EdgeMqttStatusResponse,
   EdgeRecentEventResponse,
   EdgeRecentEventsResponse,
+  LinkPhysicalDeviceRequest,
+  LinkPhysicalDeviceResponse,
   LoginRequest,
   LoginResponse,
   RegisterRequest,
@@ -40,6 +42,11 @@ export const devicesApi = {
   list: () => apiFetch<DeviceResponse[]>("/api/v1/medication/devices"),
   create: (name: string) =>
     apiFetch<DeviceResponse>("/api/v1/medication/devices", { method: "POST", body: { name } }),
+  linkPhysicalDevice: (body: LinkPhysicalDeviceRequest) =>
+    apiFetch<LinkPhysicalDeviceResponse>("/api/v1/medication/devices/link", {
+      method: "POST",
+      body,
+    }),
   status: (deviceId: number) =>
     apiFetch<DeviceHardwareStatusResponse>(`/api/v1/medication/devices/${deviceId}/status`),
   containers: (deviceId: number) =>

@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { devicesApi } from "@/lib/api/endpoints";
+import { selectPrimaryDevice } from "@/lib/domain/device-selection";
 import type { DayOfWeek } from "@/lib/api/types";
 import { CompartmentPicker } from "@/components/medications/compartment-picker";
 import {
@@ -40,7 +41,7 @@ export default function AddMedicationPage() {
   const toast = useToast();
 
   const devicesQ = useQuery({ queryKey: ["devices"], queryFn: devicesApi.list });
-  const deviceId = devicesQ.data?.[0]?.id;
+  const deviceId = selectPrimaryDevice(devicesQ.data).apiDeviceId;
 
   const containersQ = useQuery({
     queryKey: ["containers", deviceId],

@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { devicesApi, edgeApi } from "@/lib/api/endpoints";
+import { selectPrimaryDevice } from "@/lib/domain/device-selection";
 import type {
   ApiError,
   EdgeRecentEventResponse,
@@ -31,26 +32,29 @@ import type {
   EdgeRecentEventsResponse,
 } from "@/lib/api/types";
 
-const DEVICE_ID = process.env.NEXT_PUBLIC_DEFAULT_DEVICE_ID ?? "1";
+const FALLBACK_DEVICE_ID = process.env.NEXT_PUBLIC_DEFAULT_DEVICE_ID ?? "1";
 const POLL_INTERVAL_MS = 15_000;
 
 type CommandKind = "audio" | "led" | "status" | "sync";
 
 export default function DeviceDiagnosticsPage() {
   const toast = useToast();
-  const backendDeviceId = Number.parseInt(DEVICE_ID, 10) || 1;
+  const devicesQ = useQuery({ queryKey: ["devices"], queryFn: devicesApi.list });
+  const selectedDevice = selectPrimaryDevice(devicesQ.data);
+  const deviceId = selectedDevice.apiDeviceId ?? (Number.parseInt(FALLBACK_DEVICE_ID, 10) || 1);
+  const deviceLabel = selectedDevice.displayDeviceId ?? FALLBACK_DEVICE_ID;
   const [pendingCommand, setPendingCommand] = useState<CommandKind | null>(null);
 
   const backendStatusQ = useQuery({
-    queryKey: ["iot", "backend-status", backendDeviceId],
-    queryFn: () => devicesApi.status(backendDeviceId),
+    queryKey: ["iot", "backend-status", deviceId],
+    queryFn: () => devicesApi.status(deviceId),
     refetchInterval: POLL_INTERVAL_MS,
     refetchIntervalInBackground: true,
   });
 
   const latestEnvQ = useQuery({
-    queryKey: ["iot", "environment-latest", backendDeviceId],
-    queryFn: () => devicesApi.latestEnvironment(backendDeviceId),
+    queryKey: ["iot", "environment-latest", deviceId],
+    queryFn: () => devicesApi.latestEnvironment(deviceId),
     refetchInterval: POLL_INTERVAL_MS,
     refetchIntervalInBackground: true,
   });
@@ -70,8 +74,8 @@ export default function DeviceDiagnosticsPage() {
   });
 
   const cachedConfigQ = useQuery({
-    queryKey: ["iot", "cached-config", DEVICE_ID],
-    queryFn: () => edgeApi.cachedConfig(DEVICE_ID),
+    queryKey: ["iot", "cached-config", deviceLabel],
+    queryFn: () => edgeApi.cachedConfig(deviceLabel),
     refetchInterval: POLL_INTERVAL_MS,
     refetchIntervalInBackground: true,
   });
@@ -84,6 +88,7 @@ export default function DeviceDiagnosticsPage() {
   });
 
   const refetchAll = () => {
+    devicesQ.refetch();
     backendStatusQ.refetch();
     latestEnvQ.refetch();
     edgeHealthQ.refetch();
@@ -97,17 +102,17 @@ export default function DeviceDiagnosticsPage() {
     try {
       let response;
       if (kind === "audio") {
-        response = await edgeApi.audioTest(DEVICE_ID);
-        toast.success(response.message ?? `Audio test sent to device ${DEVICE_ID}.`);
+        response = await edgeApi.audioTest(deviceLabel);
+        toast.success(response.message ?? `Audio test sent to device ${deviceLabel}.`);
       } else if (kind === "led") {
-        response = await edgeApi.ledTest(DEVICE_ID);
-        toast.success(response.message ?? `LED test sent to device ${DEVICE_ID}.`);
+        response = await edgeApi.ledTest(deviceLabel);
+        toast.success(response.message ?? `LED test sent to device ${deviceLabel}.`);
       } else if (kind === "status") {
-        response = await edgeApi.statusRequest(DEVICE_ID);
-        toast.success(response.message ?? `Status request sent to device ${DEVICE_ID}.`);
+        response = await edgeApi.statusRequest(deviceLabel);
+        toast.success(response.message ?? `Status request sent to device ${deviceLabel}.`);
       } else {
-        response = await edgeApi.configSync(DEVICE_ID);
-        toast.success(response.message ?? `Config sync requested for device ${DEVICE_ID}.`);
+        response = await edgeApi.configSync(deviceLabel);
+        toast.success(response.message ?? `Config sync requested for device ${deviceLabel}.`);
       }
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -138,8 +143,12 @@ export default function DeviceDiagnosticsPage() {
               Hardware live status
             </h1>
             <p className="mt-4 max-w-2xl text-[14px] leading-6 text-white/75">
-              Monitor the ESP32, Edge and Backend path for device {DEVICE_ID}. This view stays
+              Monitor the ESP32, Edge and Backend path for device {deviceLabel}. This view stays
               responsive even when the Edge is offline.
+            </p>
+            <p className="mt-3 text-[12px] text-white/60">
+              Linked device: {selectedDevice.device?.name ?? "None"} | Device ID: {deviceLabel}
+              {selectedDevice.hardwareDeviceId != null ? ` | Hardware ID: ${selectedDevice.hardwareDeviceId}` : ""}
             </p>
           </div>
 
@@ -160,7 +169,7 @@ export default function DeviceDiagnosticsPage() {
         <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <HeroStat
             label="Device ID"
-            value={DEVICE_ID}
+            value={deviceLabel}
             tone="neutral"
             icon={<ShieldAlert className="h-4 w-4" />}
           />
@@ -193,13 +202,18 @@ export default function DeviceDiagnosticsPage() {
             description="Latest state returned by the REST API for the linked device."
           />
           <dl className="mt-5 grid gap-3 sm:grid-cols-2">
+            <InfoField label="Linked device" value={selectedDevice.device?.name ?? "Not linked"} />
+            <InfoField
+              label="Hardware device ID"
+              value={selectedDevice.hardwareDeviceId != null ? String(selectedDevice.hardwareDeviceId) : "Unavailable"}
+            />
             <InfoField
               label="Status"
               value={
                 backendStatus
                   ? backendStatus.status
                   : backendStatusError?.status === 401
-                    ? "Unauthorized"
+                    ? "Login required"
                     : "Unavailable"
               }
             />
@@ -256,7 +270,7 @@ export default function DeviceDiagnosticsPage() {
                 latestEnv
                   ? latestEnv.riskStatus
                   : latestEnvError?.status === 401
-                    ? "Unauthorized"
+                    ? "Login required"
                     : "Unknown"
               }
             />
@@ -631,7 +645,7 @@ function backendStatusLabel(
   status?: string
 ): string {
   if (loading) return "Loading";
-  if (error?.status === 401) return "Unauthorized";
+  if (error?.status === 401) return "Login required";
   if (error) return "Unavailable";
   return status ?? "Unknown";
 }

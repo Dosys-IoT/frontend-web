@@ -38,6 +38,7 @@ export interface LoginResponse {
 
 export interface DeviceResponse {
   id: number;
+  hardwareDeviceId: number | null;
   deviceKey: string;
   name: string;
   configVersion: number;
@@ -46,6 +47,20 @@ export interface DeviceResponse {
   lastSeenAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface LinkPhysicalDeviceRequest {
+  deviceId: string;
+  deviceName?: string;
+  deviceKey?: string;
+}
+
+export interface LinkPhysicalDeviceResponse {
+  deviceId: string;
+  name: string;
+  linked: boolean;
+  status: string;
+  hardwareDeviceId?: number | null;
 }
 
 export interface LocalTimeDTO {

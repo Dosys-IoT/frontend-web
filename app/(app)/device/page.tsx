@@ -7,14 +7,16 @@ import { Droplets, Thermometer, Wifi, WifiOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { devicesApi } from "@/lib/api/endpoints";
 import { getDeviceStatus } from "@/lib/domain/device-status";
+import { selectPrimaryDevice } from "@/lib/domain/device-selection";
 import { EnvironmentChart } from "@/components/device/environment-chart";
 import { CreateDeviceCard } from "@/components/device/create-device-card";
 import { ErrorState } from "@/components/ui/error-state";
 
 export default function DevicePage() {
   const devicesQ = useQuery({ queryKey: ["devices"], queryFn: devicesApi.list });
-  const device = devicesQ.data?.[0];
-  const deviceId = device?.id;
+  const selectedDevice = selectPrimaryDevice(devicesQ.data);
+  const device = selectedDevice.device;
+  const deviceId = selectedDevice.apiDeviceId;
 
   // Stable 24h window so the history query key doesn't change every render.
   const range = useMemo(() => {

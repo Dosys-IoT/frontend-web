@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { devicesApi } from "@/lib/api/endpoints";
 import { readSession } from "@/lib/auth/session";
 import { selectNextDose } from "@/lib/domain/next-dose";
+import { selectPrimaryDevice } from "@/lib/domain/device-selection";
 
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { UpcomingDoseCard } from "@/components/dashboard/upcoming-dose-card";
@@ -28,7 +29,8 @@ export default function DashboardPage() {
     queryFn: devicesApi.list,
   });
 
-  const deviceId = devicesQ.data?.[0]?.id;
+  const selectedDevice = selectPrimaryDevice(devicesQ.data);
+  const deviceId = selectedDevice.apiDeviceId;
 
   const containersQ = useQuery({
     queryKey: ["containers", deviceId],
