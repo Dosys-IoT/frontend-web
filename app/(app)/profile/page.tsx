@@ -1,26 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, Shield, Volume2, RefreshCw, Unlink2 } from "lucide-react";
+import { RefreshCw, Unlink2, UserRound, Volume2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { accessApi, devicesApi, edgeApi } from "@/lib/api/endpoints";
+import { selectPrimaryDevice } from "@/lib/domain/device-selection";
 import type { AlarmSettingsRequest, ApiError, UpdateProfileRequest } from "@/lib/api/types";
 import { formatLimaDateTime } from "@/lib/utils/date-time";
 
 export default function ProfilePage() {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [pendingAction, setPendingAction] = useState<"sync" | "status" | null>(null);
 
   const meQ = useQuery({ queryKey: ["me"], queryFn: accessApi.me });
   const devicesQ = useQuery({ queryKey: ["devices"], queryFn: devicesApi.list });
 
-  const linkedDevice = (devicesQ.data ?? []).find((device) => device.hardwareDeviceId != null) ?? null;
-  const linkedDeviceId = linkedDevice?.hardwareDeviceId ?? null;
-  const hasLinkedDevice = linkedDeviceId != null;
+  const selectedDevice = selectPrimaryDevice(devicesQ.data);
+  const linkedDevice = selectedDevice.device;
+  const linkedDeviceId = selectedDevice.apiDeviceId;
+  const hasLinkedDevice = linkedDevice != null && linkedDeviceId != null;
 
   const [profileForm, setProfileForm] = useState<UpdateProfileRequest>({
     firstName: "",
@@ -54,15 +55,30 @@ export default function ProfilePage() {
     });
   }, [linkedDevice]);
 
+  const displayName = useMemo(() => {
+    const first = profileForm.firstName.trim();
+    const last = profileForm.lastName.trim();
+    const combined = `${first} ${last}`.trim();
+    return combined || meQ.data?.email || "User";
+  }, [meQ.data?.email, profileForm.firstName, profileForm.lastName]);
+
+  const initials = useMemo(() => {
+    const first = profileForm.firstName.trim().charAt(0);
+    const last = profileForm.lastName.trim().charAt(0);
+    const merged = `${first}${last}`.trim().toUpperCase();
+    if (merged) return merged;
+    return (meQ.data?.email?.slice(0, 2) ?? "DU").toUpperCase();
+  }, [meQ.data?.email, profileForm.firstName, profileForm.lastName]);
+
   const updateProfileMutation = useMutation({
     mutationFn: () => accessApi.updateMe(profileForm),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["me"] });
-      toast.success("Profile saved.");
       setProfileForm({
         firstName: updated.firstName,
         lastName: updated.lastName,
       });
+      toast.success("Profile saved.");
     },
     onError: (error) => {
       toast.error(`Could not save profile: ${getErrorMessage(error)}`);
@@ -74,10 +90,9 @@ export default function ProfilePage() {
       if (!linkedDeviceId) throw new Error("No device linked");
       await devicesApi.updateAlarmSettings(linkedDeviceId, alarmForm);
       try {
-        await edgeApi.configSync(String(linkedDeviceId));
+        await edgeApi.configSync(String(selectedDevice.displayDeviceId ?? linkedDeviceId));
         return true;
-      } catch (error) {
-        void error;
+      } catch {
         return false;
       }
     },
@@ -108,77 +123,55 @@ export default function ProfilePage() {
     },
   });
 
-  const syncDisabled = !hasLinkedDevice || unlinkMutation.isPending;
-
-  const runEdgeCommand = async (kind: "sync" | "status") => {
-    if (!linkedDeviceId) return;
-    setPendingAction(kind);
-    try {
-      if (kind === "sync") {
-        await edgeApi.configSync(String(linkedDeviceId));
-        toast.success("Config sync sent");
-      } else {
-        await edgeApi.statusRequest(String(linkedDeviceId));
-        toast.success("Status request sent");
-      }
-    } catch (error) {
-      toast.error(getErrorMessage(error));
-    } finally {
-      setPendingAction(null);
-    }
-  };
-
   return (
     <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6">
-      <header className="rounded-3xl border border-[var(--color-ink-50)]/60 bg-white p-6 shadow-[var(--shadow-card)]">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="font-display text-[40px] leading-none text-[var(--color-ink-900)]">
-              Profile
-            </h1>
-            <p className="mt-2 text-[14px] text-[var(--color-ink-500)]">
-              Manage your personal information, alarm volume, and device sync actions.
-            </p>
+      <section className="grain overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,var(--color-ink-950),var(--color-sanctuary-800))] p-6 text-white shadow-[var(--shadow-hero)] md:p-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="grid h-20 w-20 place-items-center rounded-full bg-white/14 text-[28px] font-semibold tracking-[0.08em] text-white ring-1 ring-white/15">
+              {initials}
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-white/60">Profile</p>
+              <h1 className="mt-2 font-display text-[36px] leading-none text-white md:text-[44px]">
+                {displayName}
+              </h1>
+              <p className="mt-3 text-[14px] text-white/75">{meQ.data?.email ?? "Unavailable"}</p>
+              <p className="mt-2 text-[12px] text-white/55">
+                Last updated {formatLimaDateTime(meQ.data?.updatedAt) || "Unavailable"}
+              </p>
+            </div>
           </div>
-          <Button variant="secondary" onClick={() => queryClient.invalidateQueries()}>
+
+          <Button
+            variant="secondary"
+            onClick={() => queryClient.invalidateQueries()}
+            className="bg-white text-[var(--color-ink-900)] hover:bg-white/90"
+          >
             <RefreshCw className="h-4 w-4" />
             Refresh profile
           </Button>
         </div>
-      </header>
 
-      <section className="rounded-3xl border border-[var(--color-ink-50)]/60 bg-white p-6 shadow-[var(--shadow-card)]">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.28em] text-[var(--color-ink-400)]">
-              Personal information
-            </p>
-            <h2 className="mt-2 text-[24px] font-semibold text-[var(--color-ink-900)]">
-              Edit profile details
-            </h2>
-          </div>
-          <div className="text-right text-[12px] text-[var(--color-ink-500)]">
-            <div>{meQ.data?.role ?? "USER"}</div>
-            <div>{formatLimaDateTime(meQ.data?.updatedAt) || "Unavailable"}</div>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
           <Field
             label="First name"
             value={profileForm.firstName}
             onChange={(value) => setProfileForm((current) => ({ ...current, firstName: value }))}
+            inverted
           />
           <Field
             label="Last name"
             value={profileForm.lastName}
             onChange={(value) => setProfileForm((current) => ({ ...current, lastName: value }))}
+            inverted
           />
           <Field
             label="Email"
             value={meQ.data?.email ?? ""}
             onChange={() => undefined}
             readOnly
+            inverted
           />
         </div>
 
@@ -186,6 +179,7 @@ export default function ProfilePage() {
           <Button
             onClick={() => updateProfileMutation.mutate()}
             disabled={updateProfileMutation.isPending}
+            className="bg-white text-[var(--color-ink-950)] hover:bg-white/90"
           >
             {updateProfileMutation.isPending ? "Saving..." : "Save Changes"}
           </Button>
@@ -252,8 +246,14 @@ export default function ProfilePage() {
         </label>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <AlarmSummary label="Quiet hours" value={`${alarmForm.quietHoursStart} - ${alarmForm.quietHoursEnd}`} />
-          <AlarmSummary label="Quiet volume" value={`${alarmForm.quietHoursVolumePercent}%`} />
+          <AlarmSummary
+            label="Quiet hours"
+            value={`${alarmForm.quietHoursStart} - ${alarmForm.quietHoursEnd}`}
+          />
+          <AlarmSummary
+            label="Quiet volume"
+            value={`${alarmForm.quietHoursVolumePercent}%`}
+          />
         </div>
 
         <div className="mt-5 flex justify-end">
@@ -271,35 +271,21 @@ export default function ProfilePage() {
         <p className="text-[11px] uppercase tracking-[0.28em] text-[var(--color-danger-600)]">
           Advanced
         </p>
-        <h2 className="mt-2 text-[24px] font-semibold text-[var(--color-ink-900)]">
-          Device sync actions
+        <h2 className="mt-2 flex items-center gap-2 text-[24px] font-semibold text-[var(--color-ink-900)]">
+          <UserRound className="h-5 w-5 text-[var(--color-danger-600)]" />
+          Unlink device
         </h2>
         <p className="mt-2 text-[14px] text-[var(--color-ink-500)]">
           Unlinking stops device sync without deleting medication history.
         </p>
 
         <div className="mt-5 flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => runEdgeCommand("status")}
-              disabled={syncDisabled || pendingAction !== null}
-            >
-              <Activity className={`h-4 w-4 ${pendingAction === "status" ? "animate-pulse" : ""}`} />
-              Request device status
-            </Button>
-            <Button
-              onClick={() => runEdgeCommand("sync")}
-              disabled={syncDisabled || pendingAction !== null}
-            >
-              <Shield className={`h-4 w-4 ${pendingAction === "sync" ? "animate-spin" : ""}`} />
-              Sync device config
-            </Button>
           <Button
             variant="secondary"
             onClick={() => {
               if (
                 window.confirm(
-                  "This will unlink your device from your profile. Medication data will remain in your account, but the device will stop syncing. Continue?"
+                  "This will unlink your device from your profile. Medication history will remain, but the device will stop syncing. Continue?"
                 )
               ) {
                 unlinkMutation.mutate();
@@ -308,15 +294,15 @@ export default function ProfilePage() {
             disabled={!hasLinkedDevice || unlinkMutation.isPending}
           >
             <Unlink2 className="h-4 w-4" />
-            Unlink device
+            {unlinkMutation.isPending ? "Unlinking..." : "Unlink device"}
           </Button>
         </div>
 
-        {hasLinkedDevice ? null : (
+        {!hasLinkedDevice ? (
           <div className="mt-5 rounded-2xl border border-[var(--color-ink-100)] bg-[var(--color-cream-50)] p-4 text-[14px] text-[var(--color-ink-600)]">
             No device linked.
           </div>
-        )}
+        ) : null}
       </section>
     </div>
   );
@@ -327,20 +313,34 @@ function Field({
   value,
   onChange,
   readOnly = false,
+  inverted = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   readOnly?: boolean;
+  inverted?: boolean;
 }) {
   return (
     <label className="flex flex-col gap-2">
-      <span className="text-[13px] font-medium text-[var(--color-ink-700)]">{label}</span>
+      <span
+        className={
+          inverted
+            ? "text-[12px] font-medium text-white/70"
+            : "text-[13px] font-medium text-[var(--color-ink-700)]"
+        }
+      >
+        {label}
+      </span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         readOnly={readOnly}
-        className="rounded-2xl border border-[var(--color-ink-100)] bg-white px-4 py-3 text-[14px] outline-none transition-colors focus:border-[var(--color-sanctuary-400)]"
+        className={
+          inverted
+            ? "rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-[14px] text-white outline-none transition-colors placeholder:text-white/35 focus:border-white/25"
+            : "rounded-2xl border border-[var(--color-ink-100)] bg-white px-4 py-3 text-[14px] outline-none transition-colors focus:border-[var(--color-sanctuary-400)]"
+        }
       />
     </label>
   );
