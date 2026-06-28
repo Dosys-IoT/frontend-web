@@ -113,13 +113,13 @@ export default function DevicePage() {
             <ReadingCard
               icon={<Thermometer className="h-4 w-4" />}
               label="Temperature"
-              value={envQ.data ? `${envQ.data.temperature.toFixed(1)}°C` : "—"}
+              value={envQ.data ? `${envQ.data.temperature.toFixed(1)} C` : "No reading"}
               risk={envQ.data ? envQ.data.riskStatus !== "NORMAL" : false}
             />
             <ReadingCard
               icon={<Droplets className="h-4 w-4" />}
               label="Humidity"
-              value={envQ.data ? `${Math.round(envQ.data.humidity)}%` : "—"}
+              value={envQ.data ? `${Math.round(envQ.data.humidity)}%` : "No reading"}
               risk={envQ.data ? envQ.data.riskStatus !== "NORMAL" : false}
             />
           </div>

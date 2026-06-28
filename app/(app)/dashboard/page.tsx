@@ -97,7 +97,7 @@ export default function DashboardPage() {
         title: "Environmental Alert",
         body: `Humidity ${Math.round(envQ.data.humidity)}%, temperature ${envQ.data.temperature.toFixed(
           1
-        )}°C. Outside safe storage range.`,
+        )} C. Outside safe storage range.`,
       });
     }
     return list;

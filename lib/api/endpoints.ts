@@ -20,6 +20,14 @@ import type {
   UserResponse,
 } from "./types";
 
+function isApiErrorLike(error: unknown): error is { status?: number } {
+  return typeof error === "object" && error !== null && "status" in error;
+}
+
+function isMissingDataError(error: unknown): boolean {
+  return isApiErrorLike(error) && (error.status === 404 || error.status === 204);
+}
+
 export const accessApi = {
   login: (body: LoginRequest) =>
     apiFetch<LoginResponse>("/api/v1/access/login", { method: "POST", body, auth: false }),
@@ -38,16 +46,32 @@ export const devicesApi = {
     apiFetch<ContainerResponse[]>(`/api/v1/medication/devices/${deviceId}/containers`),
   schedules: (deviceId: number) =>
     apiFetch<ScheduleResponse[]>(`/api/v1/medication/devices/${deviceId}/schedules`),
-  latestEnvironment: (deviceId: number) =>
-    apiFetch<EnvironmentReadingResponse>(
-      `/api/v1/medication/devices/${deviceId}/environment/latest`
-    ),
-  environmentHistory: (deviceId: number, from: string, to: string) =>
-    apiFetch<EnvironmentReadingResponse[]>(
-      `/api/v1/medication/devices/${deviceId}/environment/history?from=${encodeURIComponent(
-        from
-      )}&to=${encodeURIComponent(to)}`
-    ),
+  latestEnvironment: async (deviceId: number): Promise<EnvironmentReadingResponse | null> => {
+    try {
+      return await apiFetch<EnvironmentReadingResponse>(
+        `/api/v1/medication/devices/${deviceId}/environment/latest`
+      );
+    } catch (error) {
+      if (isMissingDataError(error)) {
+        return null;
+      }
+      throw error;
+    }
+  },
+  environmentHistory: async (deviceId: number, from: string, to: string) => {
+    try {
+      return await apiFetch<EnvironmentReadingResponse[]>(
+        `/api/v1/medication/devices/${deviceId}/environment/history?from=${encodeURIComponent(
+          from
+        )}&to=${encodeURIComponent(to)}`
+      );
+    } catch (error) {
+      if (isMissingDataError(error)) {
+        return [];
+      }
+      throw error;
+    }
+  },
   adherenceCalendar: (deviceId: number, month: string) =>
     apiFetch<AdherenceCalendarResponse>(
       `/api/v1/medication/devices/${deviceId}/adherence/calendar?month=${encodeURIComponent(month)}`
@@ -90,19 +114,43 @@ export const edgeApi = {
       auth: false,
       baseUrl: EDGE_API_BASE_URL,
     }),
-  cachedConfig: (deviceId: string) =>
-    apiFetch<EdgeCachedConfigResponse>(`/edge/v1/devices/${deviceId}/cached-config`, {
-      auth: false,
-      baseUrl: EDGE_API_BASE_URL,
-    }),
-  recentEvents: () =>
-    apiFetch<EdgeRecentEventResponse[] | EdgeRecentEventsResponse>(
-      "/edge/v1/diagnostics/events/recent",
-      {
-      auth: false,
-      baseUrl: EDGE_API_BASE_URL,
+  cachedConfig: async (deviceId: string): Promise<EdgeCachedConfigResponse> => {
+    try {
+      const response = await apiFetch<EdgeCachedConfigResponse>(
+        `/edge/v1/devices/${deviceId}/cached-config`,
+        {
+          auth: false,
+          baseUrl: EDGE_API_BASE_URL,
+        }
+      );
+      if (response && typeof response === "object" && "available" in response) {
+        return response;
       }
-    ),
+      return { deviceId, available: true, config: response as EdgeCachedConfigResponse["config"] };
+    } catch (error) {
+      if (isMissingDataError(error)) {
+        return { deviceId, available: false, config: null };
+      }
+      throw error;
+    }
+  },
+  recentEvents: async (): Promise<EdgeRecentEventResponse[] | EdgeRecentEventsResponse> => {
+    try {
+      const response = await apiFetch<EdgeRecentEventResponse[] | EdgeRecentEventsResponse>(
+        "/edge/v1/diagnostics/events/recent",
+        {
+          auth: false,
+          baseUrl: EDGE_API_BASE_URL,
+        }
+      );
+      return response ?? [];
+    } catch (error) {
+      if (isMissingDataError(error)) {
+        return [];
+      }
+      throw error;
+    }
+  },
   audioTest: (deviceId: string) =>
     apiFetch<EdgeCommandResponse>(`/edge/v1/devices/${deviceId}/commands/audio-test`, {
       method: "POST",

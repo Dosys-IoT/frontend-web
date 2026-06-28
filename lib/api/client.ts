@@ -83,7 +83,7 @@ export async function apiFetch<T>(
     throw err;
   }
 
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) return null as T;
   const text = await res.text();
-  return text ? (JSON.parse(text) as T) : (undefined as T);
+  return text ? (JSON.parse(text) as T) : (null as T);
 }

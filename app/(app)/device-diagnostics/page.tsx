@@ -117,7 +117,9 @@ export default function DeviceDiagnosticsPage() {
   };
 
   const backendStatus = backendStatusQ.data;
+  const backendStatusError = backendStatusQ.error as unknown as ApiError | undefined;
   const latestEnv = latestEnvQ.data;
+  const latestEnvError = latestEnvQ.error as unknown as ApiError | undefined;
   const edgeHealth = edgeHealthQ.data;
   const edgeMqtt = edgeMqttQ.data;
   const cachedConfig = cachedConfigQ.data;
@@ -164,8 +166,8 @@ export default function DeviceDiagnosticsPage() {
           />
           <HeroStat
             label="Backend API"
-            value={statusLabel(backendStatusQ.isError, backendStatus?.status, backendStatusQ.isLoading)}
-            tone={statusTone(backendStatusQ.isError, backendStatus?.status)}
+            value={backendStatusLabel(backendStatusQ.isLoading, backendStatusError, backendStatus?.status)}
+            tone={backendStatusTone(backendStatusError, backendStatus?.status)}
             icon={<Wifi className="h-4 w-4" />}
           />
           <HeroStat
@@ -191,7 +193,16 @@ export default function DeviceDiagnosticsPage() {
             description="Latest state returned by the REST API for the linked device."
           />
           <dl className="mt-5 grid gap-3 sm:grid-cols-2">
-            <InfoField label="Status" value={backendStatus ? backendStatus.status : "Unavailable"} />
+            <InfoField
+              label="Status"
+              value={
+                backendStatus
+                  ? backendStatus.status
+                  : backendStatusError?.status === 401
+                    ? "Unauthorized"
+                    : "Unavailable"
+              }
+            />
             <InfoField label="Last seen" value={formatDate(backendStatus?.lastSeenAt)} />
             <InfoField label="Firmware" value={backendStatus?.firmwareVersion ?? "Unknown"} />
             <InfoField
@@ -213,7 +224,7 @@ export default function DeviceDiagnosticsPage() {
               value={backendStatus?.rssi != null ? `${backendStatus.rssi} dBm` : "Unknown"}
             />
           </dl>
-          {backendStatusQ.isError && (
+          {backendStatusQ.isError && backendStatusError?.status !== 401 && (
             <InlineError message={getErrorMessage(backendStatusQ.error)} />
           )}
         </Card>
@@ -228,7 +239,7 @@ export default function DeviceDiagnosticsPage() {
             <MetricTile
               icon={<Thermometer className="h-4 w-4" />}
               label="Temperature"
-              value={latestEnv ? `${latestEnv.temperature.toFixed(1)} °C` : "No reading"}
+              value={latestEnv ? `${latestEnv.temperature.toFixed(1)} C` : "No reading"}
               tone={latestEnv ? envTone(latestEnv.riskStatus) : "neutral"}
             />
             <MetricTile
@@ -239,10 +250,24 @@ export default function DeviceDiagnosticsPage() {
             />
           </div>
           <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-            <InfoField label="Risk status" value={latestEnv?.riskStatus ?? "Unknown"} />
-            <InfoField label="Recorded at" value={formatDate(latestEnv?.recordedAt)} />
+            <InfoField
+              label="Risk status"
+              value={
+                latestEnv
+                  ? latestEnv.riskStatus
+                  : latestEnvError?.status === 401
+                    ? "Unauthorized"
+                    : "Unknown"
+              }
+            />
+            <InfoField
+              label="Recorded at"
+              value={latestEnv ? formatDate(latestEnv.recordedAt) : "Unavailable"}
+            />
           </dl>
-          {latestEnvQ.isError && <InlineError message={getErrorMessage(latestEnvQ.error)} />}
+          {latestEnvQ.isError && latestEnvError?.status !== 401 && (
+            <InlineError message={getErrorMessage(latestEnvQ.error)} />
+          )}
         </Card>
 
         <Card className="p-6">
@@ -270,24 +295,27 @@ export default function DeviceDiagnosticsPage() {
             title="Cached runtime configuration"
             description="Configuration cached by the Edge for this device."
           />
-          {cachedConfig ? (
+          {cachedConfig?.available ? (
             <div className="mt-5 space-y-4">
               <dl className="grid gap-3 sm:grid-cols-2">
-                <InfoField label="Config version" value={String(cachedConfig.configVersion ?? "Unknown")} />
-                <InfoField label="Server time" value={formatDate(cachedConfig.serverTime)} />
-                <InfoField label="Timezone" value={cachedConfig.timezone ?? "America/Lima"} />
+                <InfoField
+                  label="Config version"
+                  value={String(cachedConfig.config?.configVersion ?? "Unknown")}
+                />
+                <InfoField label="Server time" value={formatDate(cachedConfig.config?.serverTime)} />
+                <InfoField label="Timezone" value={cachedConfig.config?.timezone ?? "America/Lima"} />
                 <InfoField
                   label="Request ID"
-                  value={cachedConfig.requestId ?? "Not provided"}
+                  value={cachedConfig.config?.requestId ?? "Not provided"}
                 />
               </dl>
 
               <div className="grid gap-3 sm:grid-cols-3">
-                <MiniCounter label="Containers" value={cachedConfig.containers?.length ?? 0} />
-                <MiniCounter label="Schedules" value={cachedConfig.schedules?.length ?? 0} />
+                <MiniCounter label="Containers" value={cachedConfig.config?.containers?.length ?? 0} />
+                <MiniCounter label="Schedules" value={cachedConfig.config?.schedules?.length ?? 0} />
                 <MiniCounter
                   label="Temp warning"
-                  value={cachedConfig.environmentThresholds?.temperatureWarning ?? 28}
+                  value={cachedConfig.config?.environmentThresholds?.temperatureWarning ?? 28}
                 />
               </div>
 
@@ -296,8 +324,8 @@ export default function DeviceDiagnosticsPage() {
                   Containers
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {(cachedConfig.containers ?? []).length > 0 ? (
-                    cachedConfig.containers?.map((container) => (
+                  {(cachedConfig.config?.containers ?? []).length > 0 ? (
+                    cachedConfig.config?.containers?.map((container) => (
                       <Badge key={String(container.containerNumber)} tone="ink" className="normal-case">
                         C{container.containerNumber}: {container.remainingPills ?? 0} pills
                       </Badge>
@@ -595,6 +623,25 @@ function mqttLabel(isError: boolean, mqtt?: EdgeMqttStatusResponse): string {
   if (mqtt?.connected) return "Connected";
   if (isError) return "Unavailable";
   return mqtt?.status ?? "Disconnected";
+}
+
+function backendStatusLabel(
+  loading: boolean,
+  error: ApiError | undefined,
+  status?: string
+): string {
+  if (loading) return "Loading";
+  if (error?.status === 401) return "Unauthorized";
+  if (error) return "Unavailable";
+  return status ?? "Unknown";
+}
+
+function backendStatusTone(
+  error: ApiError | undefined,
+  status?: string
+): "neutral" | "sanctuary" | "amber" | "danger" {
+  if (error?.status === 401) return "amber";
+  return statusTone(!!error, status);
 }
 
 function statusTone(

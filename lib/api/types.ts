@@ -152,7 +152,7 @@ export interface EdgeRuntimeSchedule {
   confirmationWindowSeconds?: number;
 }
 
-export interface EdgeCachedConfigResponse {
+export interface EdgeCachedConfigPayload {
   requestId?: string;
   deviceId?: string | number;
   configVersion?: number;
@@ -161,6 +161,13 @@ export interface EdgeCachedConfigResponse {
   containers?: EdgeRuntimeContainer[];
   schedules?: EdgeRuntimeSchedule[];
   environmentThresholds?: EdgeThresholds;
+}
+
+export interface EdgeCachedConfigResponse {
+  deviceId: string | number;
+  available: boolean;
+  config: EdgeCachedConfigPayload | null;
+  cachedAt?: string;
 }
 
 export interface EdgeRecentEventResponse {
