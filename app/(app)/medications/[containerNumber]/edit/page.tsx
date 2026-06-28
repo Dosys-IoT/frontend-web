@@ -21,8 +21,6 @@ import {
   validateScheduleDraft,
 } from "@/lib/domain/medication-schedules";
 
-const PILL_OPTIONS = [1, 2, 3];
-
 export default function EditMedicationPage({
   params,
 }: {
@@ -58,10 +56,19 @@ export default function EditMedicationPage({
   const [name, setName] = useState("");
   const [dosageLabel, setDosageLabel] = useState("");
   const [remainingPills, setRemainingPills] = useState("30");
-  const [pillsPerDose, setPillsPerDose] = useState(1);
   const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>([]);
   const [times, setTimes] = useState<string[]>(["08:00"]);
-  const [hydrated, setHydrated] = useState(false);
+  const scheduleSeedKey = useMemo(
+    () =>
+      `${deviceId ?? "none"}:${containerNumber}:${ownSchedules
+        .map((schedule) => {
+          const time = `${schedule.time.hour}:${schedule.time.minute}:${schedule.time.second ?? 0}`;
+          return `${schedule.id}:${time}:${schedule.daysOfWeek.join(",")}`;
+        })
+        .join("|")}`,
+    [containerNumber, deviceId, ownSchedules]
+  );
+  const [hydratedKey, setHydratedKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!container) return;
@@ -71,12 +78,13 @@ export default function EditMedicationPage({
   }, [container]);
 
   useEffect(() => {
-    if (hydrated || !schedulesQ.isFetched) return;
+    if (!containersQ.isFetched || !schedulesQ.isFetched || !container) return;
+    if (hydratedKey === scheduleSeedKey) return;
     const draft = deriveScheduleDraft(ownSchedules);
     setSelectedDays(draft.daysOfWeek);
     setTimes(draft.times);
-    setHydrated(true);
-  }, [hydrated, ownSchedules, schedulesQ.isFetched]);
+    setHydratedKey(scheduleSeedKey);
+  }, [container, containersQ.isFetched, hydratedKey, ownSchedules, scheduleSeedKey, schedulesQ.isFetched]);
 
   const scheduleValidation = useMemo(
     () => validateScheduleDraft(selectedDays, times),
@@ -228,26 +236,6 @@ export default function EditMedicationPage({
                   onChange={(e) => setRemainingPills(e.target.value)}
                 />
               </div>
-              <div>
-                <Label>Pills per Dose</Label>
-                <div className="mt-1.5 flex gap-2">
-                  {PILL_OPTIONS.map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setPillsPerDose(option)}
-                      className={
-                        "rounded-full px-4 py-2 text-[13px] font-medium transition-colors " +
-                        (pillsPerDose === option
-                          ? "bg-[var(--color-sanctuary-100)] text-[var(--color-sanctuary-700)]"
-                          : "bg-[var(--color-cream-100)] text-[var(--color-ink-500)] hover:bg-[var(--color-sanctuary-50)]")
-                      }
-                    >
-                      {option} pill{option > 1 ? "s" : ""}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
           </section>
 
@@ -278,22 +266,6 @@ export default function EditMedicationPage({
             </div>
           </section>
 
-          <section className="rounded-3xl bg-[var(--color-ink-900)] p-6 text-white shadow-[var(--shadow-card)]">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-white/60">
-              Medication sync
-            </p>
-            <p className="mt-4 text-[14px] leading-6 text-white/80">
-              Saving the container updates the backend first. Then all schedules are replaced with
-              one schedule per selected time using the same selected days.
-            </p>
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-[13px] text-white/80">
-              <p className="font-medium text-white">Pills per dose</p>
-              <p className="mt-1">
-                Selected: {pillsPerDose} pill{pillsPerDose > 1 ? "s" : ""}. This remains a UI
-                control because the backend does not persist it yet.
-              </p>
-            </div>
-          </section>
         </div>
       </div>
 

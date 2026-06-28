@@ -1,6 +1,8 @@
 import { apiFetch, EDGE_API_BASE_URL } from "./client";
 import type {
   AdherenceCalendarResponse,
+  AlarmSettingsRequest,
+  AlarmSettingsResponse,
   ContainerResponse,
   DeviceHardwareStatusResponse,
   DeviceResponse,
@@ -49,6 +51,11 @@ export const devicesApi = {
     }),
   status: (deviceId: number) =>
     apiFetch<DeviceHardwareStatusResponse>(`/api/v1/medication/devices/${deviceId}/status`),
+  updateAlarmSettings: (deviceId: number, body: AlarmSettingsRequest) =>
+    apiFetch<AlarmSettingsResponse>(`/api/v1/medication/devices/${deviceId}/alarm-settings`, {
+      method: "PUT",
+      body,
+    }),
   containers: (deviceId: number) =>
     apiFetch<ContainerResponse[]>(`/api/v1/medication/devices/${deviceId}/containers`),
   schedules: (deviceId: number) =>

@@ -44,9 +44,26 @@ export interface DeviceResponse {
   configVersion: number;
   humidityThreshold: number;
   temperatureThreshold: number;
+  alarmVolumePercent: number;
+  quietHoursEnabled: boolean;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  quietHoursVolumePercent: number;
   lastSeenAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AlarmSettingsRequest {
+  alarmVolumePercent: number;
+  quietHoursEnabled: boolean;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  quietHoursVolumePercent: number;
+}
+
+export interface AlarmSettingsResponse extends AlarmSettingsRequest {
+  deviceId: string;
 }
 
 export interface LinkPhysicalDeviceRequest {
@@ -123,6 +140,7 @@ export interface DeviceHardwareStatusResponse {
   buttonPin?: number | null;
   rssi?: number | null;
   firmwareVersion?: string | null;
+  hardwareVersion?: string | null;
   wifiConnected?: boolean | null;
   mqttConnected?: boolean | null;
 }

@@ -15,12 +15,7 @@ import { CustomScheduleEditor } from "@/components/medications/custom-schedule-e
 import { devicesApi, edgeApi } from "@/lib/api/endpoints";
 import type { DayOfWeek, UpsertContainerRequest } from "@/lib/api/types";
 import { selectPrimaryDevice } from "@/lib/domain/device-selection";
-import {
-  buildScheduleRequests,
-  validateScheduleDraft,
-} from "@/lib/domain/medication-schedules";
-
-const PILL_OPTIONS = [1, 2, 3];
+import { buildScheduleRequests, validateScheduleDraft } from "@/lib/domain/medication-schedules";
 
 export default function AddMedicationPage() {
   const router = useRouter();
@@ -44,7 +39,6 @@ export default function AddMedicationPage() {
   const [name, setName] = useState("");
   const [dosageLabel, setDosageLabel] = useState("");
   const [remainingPills, setRemainingPills] = useState("30");
-  const [pillsPerDose, setPillsPerDose] = useState(1);
   const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>([]);
   const [times, setTimes] = useState<string[]>(["08:00"]);
 
@@ -169,26 +163,6 @@ export default function AddMedicationPage() {
                   value={remainingPills}
                   onChange={(e) => setRemainingPills(e.target.value)}
                 />
-              </div>
-              <div>
-                <Label>Pills per Dose</Label>
-                <div className="mt-1.5 flex gap-2">
-                  {PILL_OPTIONS.map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setPillsPerDose(option)}
-                      className={
-                        "rounded-full px-4 py-2 text-[13px] font-medium transition-colors " +
-                        (pillsPerDose === option
-                          ? "bg-[var(--color-sanctuary-100)] text-[var(--color-sanctuary-700)]"
-                          : "bg-[var(--color-cream-100)] text-[var(--color-ink-500)] hover:bg-[var(--color-sanctuary-50)]")
-                      }
-                    >
-                      {option} pill{option > 1 ? "s" : ""}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
           </section>
