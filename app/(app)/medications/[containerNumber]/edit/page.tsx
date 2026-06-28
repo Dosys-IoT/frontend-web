@@ -11,25 +11,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { CompartmentPicker } from "@/components/medications/compartment-picker";
-import { FrequencyPicker, type DoseFrequency } from "@/components/medications/frequency-picker";
+import { CustomScheduleEditor } from "@/components/medications/custom-schedule-editor";
 import { devicesApi, edgeApi } from "@/lib/api/endpoints";
-import type { ScheduleResponse, UpsertContainerRequest } from "@/lib/api/types";
+import type { DayOfWeek, UpsertContainerRequest } from "@/lib/api/types";
 import { selectPrimaryDevice } from "@/lib/domain/device-selection";
 import {
-  ALL_DAYS,
-  addHours,
-  buildScheduleRequest,
-  formatTimeInput,
-  parseTimeInput,
-} from "@/lib/domain/medication-form";
+  buildScheduleRequests,
+  deriveScheduleDraft,
+  validateScheduleDraft,
+} from "@/lib/domain/medication-schedules";
 
 const PILL_OPTIONS = [1, 2, 3];
-
-interface ExistingState {
-  frequency: DoseFrequency;
-  primaryTime: string;
-  secondaryTime: string;
-}
 
 export default function EditMedicationPage({
   params,
@@ -67,8 +59,9 @@ export default function EditMedicationPage({
   const [dosageLabel, setDosageLabel] = useState("");
   const [remainingPills, setRemainingPills] = useState("30");
   const [pillsPerDose, setPillsPerDose] = useState(1);
-  const [frequency, setFrequency] = useState<DoseFrequency>("ONCE");
-  const [primaryTime, setPrimaryTime] = useState("08:00");
+  const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>([]);
+  const [times, setTimes] = useState<string[]>(["08:00"]);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     if (!container) return;
@@ -78,24 +71,23 @@ export default function EditMedicationPage({
   }, [container]);
 
   useEffect(() => {
-    if (!ownSchedules.length) {
-      setFrequency("AS_NEEDED");
-      setPrimaryTime("08:00");
-      return;
-    }
+    if (hydrated || !schedulesQ.isFetched) return;
+    const draft = deriveScheduleDraft(ownSchedules);
+    setSelectedDays(draft.daysOfWeek);
+    setTimes(draft.times);
+    setHydrated(true);
+  }, [hydrated, ownSchedules, schedulesQ.isFetched]);
 
-    const next = deriveExistingState(ownSchedules);
-    setFrequency(next.frequency);
-    setPrimaryTime(next.primaryTime);
-  }, [ownSchedules]);
-
-  const secondaryTime = useMemo(() => {
-    return formatTimeInput(addHours(parseTimeInput(primaryTime), 12));
-  }, [primaryTime]);
+  const scheduleValidation = useMemo(
+    () => validateScheduleDraft(selectedDays, times),
+    [selectedDays, times]
+  );
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (!deviceId || !container) throw new Error("Missing device or container");
+      if (times.length === 0) throw new Error("Add at least one reminder time");
+      if (!selectedDays.length) throw new Error("Select at least one day");
 
       const containerPayload: UpsertContainerRequest = {
         medicationName: name.trim(),
@@ -106,16 +98,19 @@ export default function EditMedicationPage({
 
       await devicesApi.upsertContainer(deviceId, containerNumber, containerPayload);
 
-      await Promise.all(ownSchedules.map((schedule) => devicesApi.deleteSchedule(deviceId, schedule.id)));
+      await Promise.all(
+        ownSchedules.map((schedule) => devicesApi.deleteSchedule(deviceId, schedule.id))
+      );
 
-      for (const schedule of buildSchedules()) {
+      const schedules = buildScheduleRequests(containerNumber, selectedDays, times);
+      for (const schedule of schedules) {
         await devicesApi.createSchedule(deviceId, schedule);
       }
 
       try {
         await edgeApi.configSync(String(deviceId));
       } catch (error) {
-        toast.info(`Medication saved, but config sync failed: ${getErrorMessage(error)}`);
+        toast.info(`Medication saved, but device sync failed: ${getErrorMessage(error)}`);
       }
     },
     onSuccess: () => {
@@ -134,7 +129,7 @@ export default function EditMedicationPage({
           dosageLabel: dosageLabel.trim() || undefined,
           remainingPills: Number(remainingPills) || 0,
           isEnabled: true,
-          schedules: buildSchedules(),
+          schedules: buildScheduleRequests(containerNumber, selectedDays, times),
         },
         error,
       });
@@ -146,27 +141,12 @@ export default function EditMedicationPage({
     !!deviceId &&
     !!container &&
     name.trim().length > 1 &&
+    times.length > 0 &&
+    selectedDays.length > 0 &&
+    !scheduleValidation.dayError &&
+    !scheduleValidation.timeError &&
+    !scheduleValidation.duplicateError &&
     !mutation.isPending;
-
-  function buildSchedules() {
-    if (frequency === "AS_NEEDED") return [];
-    const first = buildScheduleRequest(
-      containerNumber,
-      parseTimeInput(primaryTime),
-      ALL_DAYS,
-      true
-    );
-    if (frequency === "TWICE") {
-      const second = buildScheduleRequest(
-        containerNumber,
-        parseTimeInput(secondaryTime),
-        ALL_DAYS,
-        true
-      );
-      return [first, second];
-    }
-    return [first];
-  }
 
   if (!container && containersQ.isFetched) {
     return (
@@ -274,11 +254,7 @@ export default function EditMedicationPage({
           <section className="rounded-3xl border border-[var(--color-ink-50)]/60 bg-white p-6 shadow-[var(--shadow-card)]">
             <SectionTitle label="Assigned Compartment" />
             <div className="mt-3">
-              <CompartmentPicker
-                value={containerNumber}
-                onChange={() => undefined}
-                disabledNumbers={[]}
-              />
+              <CompartmentPicker value={containerNumber} onChange={() => undefined} disabledNumbers={[]} />
             </div>
             <p className="mt-2 text-[12px] text-[var(--color-ink-500)]">
               Container number {containerNumber} is fixed for this edit view.
@@ -288,30 +264,17 @@ export default function EditMedicationPage({
 
         <div className="flex flex-col gap-5">
           <section className="rounded-3xl border border-[var(--color-ink-50)]/60 bg-white p-6 shadow-[var(--shadow-card)]">
-            <SectionTitle label="Schedule Configuration" />
-            <div className="mt-4 grid gap-4">
-              <div>
-                <Label>Daily Frequency</Label>
-                <div className="mt-1.5">
-                  <FrequencyPicker value={frequency} onChange={setFrequency} />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="primary-time">Primary Dose Time</Label>
-                <Input
-                  id="primary-time"
-                  type="time"
-                  className="mt-1.5"
-                  value={primaryTime}
-                  onChange={(e) => setPrimaryTime(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Secondary Dose Time</Label>
-                <div className="mt-1.5 rounded-xl border border-[var(--color-ink-100)] bg-[var(--color-cream-50)] px-4 py-3 text-[14px] text-[var(--color-ink-500)]">
-                  {frequency === "TWICE" ? secondaryTime : "Not used"}
-                </div>
-              </div>
+            <CustomScheduleEditor
+              daysOfWeek={selectedDays}
+              times={times}
+              onDaysChange={setSelectedDays}
+              onTimesChange={setTimes}
+              dayError={scheduleValidation.dayError}
+              timeError={scheduleValidation.timeError}
+              duplicateError={scheduleValidation.duplicateError}
+            />
+            <div className="mt-4 rounded-2xl border border-[var(--color-ink-100)] bg-[var(--color-cream-50)] p-4 text-[13px] text-[var(--color-ink-500)]">
+              Selected times: {times.length > 0 ? times.join(", ") : "none"}
             </div>
           </section>
 
@@ -320,9 +283,8 @@ export default function EditMedicationPage({
               Medication sync
             </p>
             <p className="mt-4 text-[14px] leading-6 text-white/80">
-              Saving the container updates the backend first. Then schedules are rebuilt from the
-              selected frequency and time, and the Edge config sync is triggered so the ESP32 picks
-              up the runtime config.
+              Saving the container updates the backend first. Then all schedules are replaced with
+              one schedule per selected time using the same selected days.
             </p>
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-[13px] text-white/80">
               <p className="font-medium text-white">Pills per dose</p>
@@ -336,11 +298,7 @@ export default function EditMedicationPage({
       </div>
 
       <footer className="flex items-center gap-4">
-        <Button
-          onClick={() => mutation.mutate()}
-          disabled={!canSubmit}
-          size="lg"
-        >
+        <Button onClick={() => mutation.mutate()} disabled={!canSubmit} size="lg">
           <ShieldCheck className="h-4 w-4" />
           {mutation.isPending ? "Saving..." : "Save Changes"}
         </Button>
@@ -353,38 +311,6 @@ export default function EditMedicationPage({
       </footer>
     </div>
   );
-}
-
-function deriveExistingState(schedules: ScheduleResponse[]): ExistingState {
-  if (schedules.length >= 2) {
-    const [first, second] = [...schedules].sort(compareScheduleTime);
-    return {
-      frequency: "TWICE",
-      primaryTime: formatTimeInput(first.time),
-      secondaryTime: formatTimeInput(second.time),
-    };
-  }
-
-  const [single] = schedules;
-  if (!single) {
-    return {
-      frequency: "AS_NEEDED",
-      primaryTime: "08:00",
-      secondaryTime: "20:00",
-    };
-  }
-
-  return {
-    frequency: "ONCE",
-    primaryTime: formatTimeInput(single.time),
-    secondaryTime: formatTimeInput(addHours(single.time, 12)),
-  };
-}
-
-function compareScheduleTime(a: ScheduleResponse, b: ScheduleResponse) {
-  const aMinutes = a.time.hour * 60 + a.time.minute;
-  const bMinutes = b.time.hour * 60 + b.time.minute;
-  return aMinutes - bMinutes;
 }
 
 function SectionTitle({ label }: { label: string }) {

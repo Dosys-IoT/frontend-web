@@ -11,17 +11,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { CompartmentPicker } from "@/components/medications/compartment-picker";
-import { FrequencyPicker, type DoseFrequency } from "@/components/medications/frequency-picker";
+import { CustomScheduleEditor } from "@/components/medications/custom-schedule-editor";
 import { devicesApi, edgeApi } from "@/lib/api/endpoints";
-import type { UpsertContainerRequest } from "@/lib/api/types";
+import type { DayOfWeek, UpsertContainerRequest } from "@/lib/api/types";
 import { selectPrimaryDevice } from "@/lib/domain/device-selection";
 import {
-  ALL_DAYS,
-  addHours,
-  buildScheduleRequest,
-  formatTimeInput,
-  parseTimeInput,
-} from "@/lib/domain/medication-form";
+  buildScheduleRequests,
+  validateScheduleDraft,
+} from "@/lib/domain/medication-schedules";
 
 const PILL_OPTIONS = [1, 2, 3];
 
@@ -48,17 +45,24 @@ export default function AddMedicationPage() {
   const [dosageLabel, setDosageLabel] = useState("");
   const [remainingPills, setRemainingPills] = useState("30");
   const [pillsPerDose, setPillsPerDose] = useState(1);
-  const [frequency, setFrequency] = useState<DoseFrequency>("ONCE");
-  const [primaryTime, setPrimaryTime] = useState("08:00");
+  const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>([]);
+  const [times, setTimes] = useState<string[]>(["08:00"]);
 
-  const secondaryTime = useMemo(() => {
-    const parsed = parseTimeInput(primaryTime);
-    return formatTimeInput(addHours(parsed, 12));
-  }, [primaryTime]);
+  const scheduleValidation = useMemo(
+    () => validateScheduleDraft(selectedDays, times),
+    [selectedDays, times]
+  );
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (!deviceId) throw new Error("No device available");
+      if (usedSlots.includes(containerNumber)) {
+        throw new Error(`Compartment ${containerNumber} is already in use`);
+      }
+      const schedules = buildScheduleRequests(containerNumber, selectedDays, times);
+      if (schedules.length === 0) {
+        throw new Error("Add at least one valid reminder time");
+      }
 
       const containerPayload: UpsertContainerRequest = {
         medicationName: name.trim(),
@@ -68,15 +72,14 @@ export default function AddMedicationPage() {
       };
 
       await devicesApi.upsertContainer(deviceId, containerNumber, containerPayload);
-
-      for (const schedule of buildSchedules()) {
+      for (const schedule of schedules) {
         await devicesApi.createSchedule(deviceId, schedule);
       }
 
       try {
         await edgeApi.configSync(String(deviceId));
       } catch (error) {
-        toast.info(`Medication saved, but config sync failed: ${getErrorMessage(error)}`);
+        toast.info(`Medication saved, but device sync failed: ${getErrorMessage(error)}`);
       }
     },
     onSuccess: () => {
@@ -95,7 +98,7 @@ export default function AddMedicationPage() {
           dosageLabel: dosageLabel.trim() || undefined,
           remainingPills: Number(remainingPills) || 0,
           isEnabled: true,
-          schedules: buildSchedules(),
+          schedules: buildScheduleRequests(containerNumber, selectedDays, times),
         },
         error,
       });
@@ -107,27 +110,8 @@ export default function AddMedicationPage() {
     !!deviceId &&
     !usedSlots.includes(containerNumber) &&
     name.trim().length > 1 &&
+    schedulesAreValid(scheduleValidation) &&
     !mutation.isPending;
-
-  function buildSchedules() {
-    if (frequency === "AS_NEEDED") return [];
-    const first = buildScheduleRequest(
-      containerNumber,
-      parseTimeInput(primaryTime),
-      ALL_DAYS,
-      true
-    );
-    if (frequency === "TWICE") {
-      const second = buildScheduleRequest(
-        containerNumber,
-        parseTimeInput(secondaryTime),
-        ALL_DAYS,
-        true
-      );
-      return [first, second];
-    }
-    return [first];
-  }
 
   return (
     <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-7">
@@ -143,9 +127,8 @@ export default function AddMedicationPage() {
           <h1 className="mt-2 font-display text-[44px] leading-none text-[var(--color-ink-900)]">
             Add Medication
           </h1>
-          <p className="mt-3 max-w-[620px] text-[14px] text-[var(--color-ink-500)]">
-            Create the container and real schedules used by the ESP32. No calibration or weight
-            workflow is involved here.
+          <p className="mt-3 max-w-[720px] text-[14px] text-[var(--color-ink-500)]">
+            Create the container and custom reminder schedules used by the ESP32.
           </p>
         </div>
         <DeviceStatusPill connected={!!deviceId} />
@@ -161,7 +144,7 @@ export default function AddMedicationPage() {
                 <Input
                   id="med-name"
                   className="mt-1.5"
-                  placeholder="e.g. Lisinopril"
+                  placeholder="e.g. Paracetamol"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />
@@ -232,30 +215,17 @@ export default function AddMedicationPage() {
 
         <div className="flex flex-col gap-5">
           <section className="rounded-3xl border border-[var(--color-ink-50)]/60 bg-white p-6 shadow-[var(--shadow-card)]">
-            <SectionTitle label="Schedule Configuration" />
-            <div className="mt-4 grid gap-4">
-              <div>
-                <Label>Daily Frequency</Label>
-                <div className="mt-1.5">
-                  <FrequencyPicker value={frequency} onChange={setFrequency} />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="primary-time">Primary Dose Time</Label>
-                <Input
-                  id="primary-time"
-                  type="time"
-                  className="mt-1.5"
-                  value={primaryTime}
-                  onChange={(e) => setPrimaryTime(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Secondary Dose Time</Label>
-                <div className="mt-1.5 rounded-xl border border-[var(--color-ink-100)] bg-[var(--color-cream-50)] px-4 py-3 text-[14px] text-[var(--color-ink-500)]">
-                  {frequency === "TWICE" ? secondaryTime : "Not used"}
-                </div>
-              </div>
+            <CustomScheduleEditor
+              daysOfWeek={selectedDays}
+              times={times}
+              onDaysChange={setSelectedDays}
+              onTimesChange={setTimes}
+              dayError={scheduleValidation.dayError}
+              timeError={scheduleValidation.timeError}
+              duplicateError={scheduleValidation.duplicateError}
+            />
+            <div className="mt-4 rounded-2xl border border-[var(--color-ink-100)] bg-[var(--color-cream-50)] p-4 text-[13px] text-[var(--color-ink-500)]">
+              Selected times: {times.length > 0 ? times.join(", ") : "none"}
             </div>
           </section>
 
@@ -264,15 +234,14 @@ export default function AddMedicationPage() {
               Real schedule flow
             </p>
             <p className="mt-4 text-[14px] leading-6 text-white/80">
-              Container data is saved first. Then one or two schedules are created depending on the
-              selected frequency. As Needed skips schedule creation.
+              The container is saved first. Then one schedule is created for each selected time
+              using the same selected days. After that, the Edge config sync is triggered.
             </p>
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-[13px] text-white/80">
               <p className="font-medium text-white">Pills per dose</p>
               <p className="mt-1">
-                Selected: {pillsPerDose} pill{pillsPerDose > 1 ? "s" : ""}. This value is kept in
-                the UI for operator clarity and is not sent to the backend because the API does not
-                persist it yet.
+                Selected: {pillsPerDose} pill{pillsPerDose > 1 ? "s" : ""}. This remains a UI
+                control for operator clarity.
               </p>
             </div>
           </section>
@@ -293,6 +262,10 @@ export default function AddMedicationPage() {
       </footer>
     </div>
   );
+}
+
+function schedulesAreValid(validation: { dayError?: string; timeError?: string; duplicateError?: string }) {
+  return !validation.dayError && !validation.timeError && !validation.duplicateError;
 }
 
 function SectionTitle({ label }: { label: string }) {
