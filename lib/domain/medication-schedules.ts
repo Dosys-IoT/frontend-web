@@ -17,17 +17,33 @@ export interface ScheduleDraftValidation {
   duplicateError?: string;
 }
 
+const TWELVE_HOUR_PATTERN = /^(\d{1,2}):(\d{2})\s*([AP]M)$/i;
+const TWENTY_FOUR_HOUR_PATTERN = /^(\d{1,2}):(\d{2})$/;
+
 export function normalizeTimeInput(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
 
-  const parts = trimmed.split(":");
-  if (parts.length < 2) return "";
+  const amPmMatch = trimmed.toUpperCase().match(TWELVE_HOUR_PATTERN);
+  if (amPmMatch) {
+    const hour12 = Number.parseInt(amPmMatch[1] ?? "", 10);
+    const minute = Number.parseInt(amPmMatch[2] ?? "", 10);
+    const suffix = amPmMatch[3]?.toUpperCase();
+    if (!Number.isFinite(hour12) || !Number.isFinite(minute) || hour12 < 1 || hour12 > 12 || minute < 0 || minute > 59) {
+      return "";
+    }
+    const hour = suffix === "PM" ? (hour12 % 12) + 12 : hour12 % 12;
+    return formatTimeInput({ hour, minute });
+  }
 
-  const hour = Number.parseInt(parts[0] ?? "", 10);
-  const minute = Number.parseInt(parts[1] ?? "", 10);
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return "";
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return "";
+  const twentyFourHourMatch = trimmed.match(TWENTY_FOUR_HOUR_PATTERN);
+  if (!twentyFourHourMatch) return "";
+
+  const hour = Number.parseInt(twentyFourHourMatch[1] ?? "", 10);
+  const minute = Number.parseInt(twentyFourHourMatch[2] ?? "", 10);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return "";
+  }
 
   return formatTimeInput({ hour, minute });
 }
@@ -61,8 +77,11 @@ export function validateScheduleDraft(
   daysOfWeek: DayOfWeek[],
   times: string[]
 ): ScheduleDraftValidation {
-  const normalizedTimes = sortTimeInputs(times);
+  const normalizedTimes = times
+    .map((time) => normalizeTimeInput(time))
+    .filter((time): time is string => !!time);
   const validation: ScheduleDraftValidation = {};
+  const invalidTime = times.some((time) => time.trim().length > 0 && !normalizeTimeInput(time));
 
   if (daysOfWeek.length === 0) {
     validation.dayError = "Select at least one day.";
@@ -70,6 +89,8 @@ export function validateScheduleDraft(
 
   if (normalizedTimes.length === 0) {
     validation.timeError = "Add at least one valid time.";
+  } else if (invalidTime) {
+    validation.timeError = "Use a valid time like 08:00, 20:30 or 8:00 PM.";
   }
 
   if (normalizedTimes.length !== new Set(normalizedTimes).size) {

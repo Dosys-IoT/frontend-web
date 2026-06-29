@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,13 @@ export function CustomScheduleEditor({
   timeError,
   duplicateError,
 }: CustomScheduleEditorProps) {
+  const [drafts, setDrafts] = useState<string[]>(times);
+  const draftSignature = useMemo(() => times.join("|"), [times]);
+
+  useEffect(() => {
+    setDrafts(times);
+  }, [draftSignature, times]);
+
   const toggleDay = (value: DayOfWeek) => {
     const exists = daysOfWeek.includes(value);
     onDaysChange(
@@ -35,18 +43,29 @@ export function CustomScheduleEditor({
   };
 
   const updateTime = (index: number, value: string) => {
-    const next = [...times];
+    const next = [...drafts];
     next[index] = value;
-    onTimesChange(sortTimeInputs(next));
+    setDrafts(next);
+    onTimesChange(next);
+  };
+
+  const normalizeDraft = (index: number) => {
+    const normalized = normalizeTimeInput(drafts[index] ?? "");
+    const next = [...drafts];
+    next[index] = normalized || (drafts[index] ?? "").trim();
+    setDrafts(next);
+    onTimesChange(normalized ? sortTimeInputs(next) : next);
   };
 
   const addTime = () => {
-    const next = [...times, "08:00"];
-    onTimesChange(sortTimeInputs(next));
+    const next = [...drafts, ""];
+    setDrafts(next);
+    onTimesChange(next);
   };
 
   const removeTime = (index: number) => {
-    const next = times.filter((_, i) => i !== index);
+    const next = drafts.filter((_, i) => i !== index);
+    setDrafts(next);
     onTimesChange(next.length > 0 ? sortTimeInputs(next) : []);
   };
 
@@ -90,15 +109,17 @@ export function CustomScheduleEditor({
         </div>
 
         <div className="mt-3 grid gap-3">
-          {times.map((time, index) => (
+          {drafts.map((time, index) => (
             <div
-              key={`${time}-${index}`}
+              key={index}
               className="flex items-center gap-3 rounded-2xl border border-[var(--color-ink-100)] bg-[var(--color-cream-50)] p-3"
             >
               <Input
-                type="time"
+                type="text"
                 value={time}
-                onChange={(e) => updateTime(index, normalizeTimeInput(e.target.value))}
+                onChange={(e) => updateTime(index, e.target.value)}
+                onBlur={() => normalizeDraft(index)}
+                placeholder="HH:mm"
                 className="max-w-[180px]"
               />
               <Button

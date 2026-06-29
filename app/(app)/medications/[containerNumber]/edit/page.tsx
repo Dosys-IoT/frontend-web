@@ -49,7 +49,7 @@ export default function EditMedicationPage({
 
   const container = (containersQ.data ?? []).find((c) => c.containerNumber === containerNumber);
   const ownSchedules = useMemo(
-    () => (schedulesQ.data ?? []).filter((s) => s.containerNumber === containerNumber),
+    () => (schedulesQ.data ?? []).filter((s) => s.containerNumber === containerNumber && s.isActive),
     [schedulesQ.data, containerNumber]
   );
 
