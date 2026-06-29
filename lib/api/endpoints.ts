@@ -4,6 +4,7 @@ import type {
   AlarmSettingsRequest,
   AlarmSettingsResponse,
   ContainerResponse,
+  ContainerSchedulesResponse,
   DeviceHardwareStatusResponse,
   DeviceResponse,
   EnvironmentReadingResponse,
@@ -68,6 +69,10 @@ export const devicesApi = {
     apiFetch<ContainerResponse[]>(`/api/v1/medication/devices/${deviceId}/containers`),
   schedules: (deviceId: number) =>
     apiFetch<ScheduleResponse[]>(`/api/v1/medication/devices/${deviceId}/schedules`),
+  containerSchedules: (deviceId: number, containerNumber: number) =>
+    apiFetch<ContainerSchedulesResponse>(
+      `/api/v1/medication/devices/${deviceId}/containers/${containerNumber}/schedules`
+    ),
   latestEnvironment: async (deviceId: number): Promise<EnvironmentReadingResponse | null> => {
     try {
       return await apiFetch<EnvironmentReadingResponse>(

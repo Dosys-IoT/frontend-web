@@ -105,9 +105,15 @@ export interface LocalTimeDTO {
 export interface ScheduleResponse {
   id: number;
   containerNumber: number;
-  time: LocalTimeDTO;
+  time: LocalTimeDTO | string;
   daysOfWeek: DayOfWeek[];
   isActive: boolean;
+}
+
+export interface ContainerSchedulesResponse {
+  deviceId: string;
+  containerNumber: number;
+  schedules: ScheduleResponse[];
 }
 
 export interface UpsertScheduleRequest {

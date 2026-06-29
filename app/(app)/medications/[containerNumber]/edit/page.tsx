@@ -20,6 +20,7 @@ import {
   deriveScheduleDraft,
   validateScheduleDraft,
 } from "@/lib/domain/medication-schedules";
+import { formatUnknownTimeInput } from "@/lib/domain/medication-form";
 
 export default function EditMedicationPage({
   params,
@@ -42,15 +43,15 @@ export default function EditMedicationPage({
   });
 
   const schedulesQ = useQuery({
-    queryKey: ["schedules", deviceId],
-    queryFn: () => devicesApi.schedules(deviceId!),
+    queryKey: ["container-schedules", deviceId, containerNumber],
+    queryFn: () => devicesApi.containerSchedules(deviceId!, containerNumber),
     enabled: !!deviceId,
   });
 
   const container = (containersQ.data ?? []).find((c) => c.containerNumber === containerNumber);
   const ownSchedules = useMemo(
-    () => (schedulesQ.data ?? []).filter((s) => s.containerNumber === containerNumber && s.isActive),
-    [schedulesQ.data, containerNumber]
+    () => schedulesQ.data?.schedules ?? [],
+    [schedulesQ.data]
   );
 
   const [name, setName] = useState("");
@@ -62,7 +63,7 @@ export default function EditMedicationPage({
     () =>
       `${deviceId ?? "none"}:${containerNumber}:${ownSchedules
         .map((schedule) => {
-          const time = `${schedule.time.hour}:${schedule.time.minute}:${schedule.time.second ?? 0}`;
+          const time = formatUnknownTimeInput(schedule.time);
           return `${schedule.id}:${time}:${schedule.daysOfWeek.join(",")}`;
         })
         .join("|")}`,
@@ -106,9 +107,7 @@ export default function EditMedicationPage({
 
       await devicesApi.upsertContainer(deviceId, containerNumber, containerPayload);
 
-      await Promise.all(
-        ownSchedules.map((schedule) => devicesApi.deleteSchedule(deviceId, schedule.id))
-      );
+      await Promise.all(ownSchedules.map((schedule) => devicesApi.deleteSchedule(deviceId, schedule.id)));
 
       const schedules = buildScheduleRequests(containerNumber, selectedDays, times);
       for (const schedule of schedules) {
@@ -124,6 +123,7 @@ export default function EditMedicationPage({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["containers", deviceId] });
       queryClient.invalidateQueries({ queryKey: ["schedules", deviceId] });
+      queryClient.invalidateQueries({ queryKey: ["container-schedules", deviceId, containerNumber] });
       queryClient.invalidateQueries({ queryKey: ["devices"] });
       toast.success("Changes saved.");
       router.push(`/medications/${containerNumber}`);
@@ -252,18 +252,26 @@ export default function EditMedicationPage({
 
         <div className="flex flex-col gap-5">
           <section className="rounded-3xl border border-[var(--color-ink-50)]/60 bg-white p-6 shadow-[var(--shadow-card)]">
-            <CustomScheduleEditor
-              daysOfWeek={selectedDays}
-              times={times}
-              onDaysChange={setSelectedDays}
-              onTimesChange={setTimes}
-              dayError={scheduleValidation.dayError}
-              timeError={scheduleValidation.timeError}
-              duplicateError={scheduleValidation.duplicateError}
-            />
-            <div className="mt-4 rounded-2xl border border-[var(--color-ink-100)] bg-[var(--color-cream-50)] p-4 text-[13px] text-[var(--color-ink-500)]">
-              Selected times: {times.length > 0 ? times.join(", ") : "none"}
-            </div>
+            {schedulesQ.isLoading && hydratedKey !== scheduleSeedKey ? (
+              <div className="rounded-2xl border border-[var(--color-ink-100)] bg-[var(--color-cream-50)] p-4 text-[13px] text-[var(--color-ink-500)]">
+                Loading schedules...
+              </div>
+            ) : (
+              <>
+                <CustomScheduleEditor
+                  daysOfWeek={selectedDays}
+                  times={times}
+                  onDaysChange={setSelectedDays}
+                  onTimesChange={setTimes}
+                  dayError={scheduleValidation.dayError}
+                  timeError={scheduleValidation.timeError}
+                  duplicateError={scheduleValidation.duplicateError}
+                />
+                <div className="mt-4 rounded-2xl border border-[var(--color-ink-100)] bg-[var(--color-cream-50)] p-4 text-[13px] text-[var(--color-ink-500)]">
+                  Selected times: {times.length > 0 ? times.join(", ") : "none"}
+                </div>
+              </>
+            )}
           </section>
 
         </div>

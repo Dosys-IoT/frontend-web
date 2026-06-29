@@ -1,4 +1,6 @@
 import type { DayOfWeek, ScheduleResponse } from "@/lib/api/types";
+import { parseTimeInput } from "@/lib/domain/medication-form";
+import { formatUnknownTimeInput } from "@/lib/domain/medication-form";
 
 export interface UpcomingDose {
   schedule: ScheduleResponse;
@@ -27,11 +29,14 @@ const DAY_INDEX: Record<DayOfWeek, number> = {
 export function nextOccurrence(schedule: ScheduleResponse, now: Date): Date | null {
   if (!schedule.daysOfWeek || schedule.daysOfWeek.length === 0) return null;
   const wantedDays = new Set(schedule.daysOfWeek.map((d) => DAY_INDEX[d]));
+  const normalizedTime = formatUnknownTimeInput(schedule.time);
+  if (!normalizedTime) return null;
+  const parsedTime = parseTimeInput(normalizedTime);
   for (let offset = 0; offset < 7; offset++) {
     const candidate = new Date(now);
     candidate.setDate(now.getDate() + offset);
     if (!wantedDays.has(candidate.getDay())) continue;
-    candidate.setHours(schedule.time.hour, schedule.time.minute, schedule.time.second ?? 0, 0);
+    candidate.setHours(parsedTime.hour, parsedTime.minute, parsedTime.second ?? 0, 0);
     if (candidate.getTime() > now.getTime()) return candidate;
   }
   return null;

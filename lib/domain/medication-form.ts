@@ -26,6 +26,20 @@ export function formatTimeInput(value: LocalTimeDTO): string {
   return `${hour}:${minute}`;
 }
 
+export function formatUnknownTimeInput(value: LocalTimeDTO | string): string {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    const parts = trimmed.split(":");
+    if (parts.length < 2) return "";
+    const hour = Number.parseInt(parts[0] ?? "0", 10);
+    const minute = Number.parseInt(parts[1] ?? "0", 10);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return "";
+    return formatTimeInput({ hour, minute });
+  }
+  return formatTimeInput(value);
+}
+
 export function addHours(value: LocalTimeDTO, hours: number): LocalTimeDTO {
   const total = value.hour * 60 + value.minute + hours * 60;
   const normalized = ((total % (24 * 60)) + 24 * 60) % (24 * 60);

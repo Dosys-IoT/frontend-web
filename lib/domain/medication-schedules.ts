@@ -1,5 +1,5 @@
 import type { DayOfWeek, ScheduleResponse, UpsertScheduleRequest } from "@/lib/api/types";
-import { formatTimeInput, parseTimeInput } from "@/lib/domain/medication-form";
+import { formatTimeInput, formatUnknownTimeInput, parseTimeInput } from "@/lib/domain/medication-form";
 
 export const DAY_OPTIONS: { value: DayOfWeek; shortLabel: string; label: string }[] = [
   { value: "MONDAY", shortLabel: "Mon", label: "Monday" },
@@ -115,7 +115,7 @@ export function deriveScheduleDraft(schedules: ScheduleResponse[]): {
     ? [...firstDays]
     : Array.from(new Set(sorted.flatMap((schedule) => schedule.daysOfWeek))).sort(daySort);
 
-  const times = sortTimeInputs(sorted.map((schedule) => formatTimeInput(schedule.time)));
+  const times = sortTimeInputs(sorted.map((schedule) => formatUnknownTimeInput(schedule.time)));
   return {
     daysOfWeek: sharedDays,
     times: times.length > 0 ? times : ["08:00"],
@@ -123,8 +123,10 @@ export function deriveScheduleDraft(schedules: ScheduleResponse[]): {
 }
 
 function compareScheduleResponseTime(a: ScheduleResponse, b: ScheduleResponse) {
-  const left = a.time.hour * 60 + a.time.minute;
-  const right = b.time.hour * 60 + b.time.minute;
+  const leftTime = parseTimeInput(formatUnknownTimeInput(a.time) || "00:00");
+  const rightTime = parseTimeInput(formatUnknownTimeInput(b.time) || "00:00");
+  const left = leftTime.hour * 60 + leftTime.minute;
+  const right = rightTime.hour * 60 + rightTime.minute;
   return left - right;
 }
 
